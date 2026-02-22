@@ -16,12 +16,19 @@ final class DevineAppModel: ObservableObject {
     @Published private(set) var mirrorCheckins: [MirrorCheckinEntry] = []
     @Published private(set) var mirrorTimelineState: MirrorTimelineState = .idle
 
+    // Social
+    @Published var glowCircle: GlowCircle?
+
+    // Plan History
+    @Published private(set) var planAdjustmentHistory: [PlanAdjustmentRecord] = []
+
     private var currentDayKey = DevineAppModel.dayKey(for: .now)
     private var streakCreditedDayKey: String?
     private let mirrorMetadataStore = MirrorCheckinMetadataStore()
 
     init() {
         loadMirrorTimeline()
+        seedPlanHistory()
     }
 
     func configure(goal: GlowGoal, hasInitialEvidence: Bool) {
@@ -264,5 +271,73 @@ final class DevineAppModel: ObservableObject {
             }
         }
         return freq
+    }
+
+    // MARK: - Social
+
+    func createCircle(name: String) {
+        let mockMembers: [CircleMember] = [
+            CircleMember(displayName: "Mia K.", avatarColor: .rose, streakDays: 7),
+            CircleMember(displayName: "Zara T.", avatarColor: .peach, streakDays: 3),
+        ]
+        var circle = GlowCircle(name: name, members: mockMembers)
+        let challenge = GlowChallenge(
+            title: "7-Day Glow Challenge",
+            description: "Complete your daily actions for 7 days straight — as a team.",
+            durationDays: 7,
+            startDate: Calendar.current.date(byAdding: .day, value: -2, to: .now)!,
+            memberProgress: Dictionary(uniqueKeysWithValues: mockMembers.map { ($0.id, Int.random(in: 1...3)) })
+        )
+        circle.activeChallenge = challenge
+        glowCircle = circle
+    }
+
+    func joinCircle(inviteCode: String) {
+        guard !inviteCode.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        let mockMembers: [CircleMember] = [
+            CircleMember(displayName: "Luna R.", avatarColor: .plum, streakDays: 12),
+            CircleMember(displayName: "Kai S.", avatarColor: .sage, streakDays: 5),
+            CircleMember(displayName: "Nova B.", avatarColor: .sky, streakDays: 9),
+        ]
+        var circle = GlowCircle(name: "Glow Squad", members: mockMembers)
+        let challenge = GlowChallenge(
+            title: "7-Day Glow Challenge",
+            description: "Complete your daily actions for 7 days straight — as a team.",
+            durationDays: 7,
+            startDate: Calendar.current.date(byAdding: .day, value: -3, to: .now)!,
+            memberProgress: Dictionary(uniqueKeysWithValues: mockMembers.map { ($0.id, Int.random(in: 2...5)) })
+        )
+        circle.activeChallenge = challenge
+        glowCircle = circle
+    }
+
+    func blockMember(id: UUID) {
+        glowCircle?.members.removeAll { $0.id == id }
+    }
+
+    // MARK: - Plan History
+
+    private func seedPlanHistory() {
+        let cal = Calendar.current
+        planAdjustmentHistory = [
+            PlanAdjustmentRecord(
+                createdAt: cal.date(byAdding: .day, value: -1, to: .now)!,
+                severity: .minorTweak,
+                reason: "Strong consistency over 3 days. Kept current sequence.",
+                associatedEvidence: ["3-day streak", "All actions completed"]
+            ),
+            PlanAdjustmentRecord(
+                createdAt: cal.date(byAdding: .day, value: -5, to: .now)!,
+                severity: .resequence,
+                reason: "Sleep tags suggested recovery focus. Morning action moved to evening.",
+                associatedEvidence: ["Low energy tag", "Mirror check-in"]
+            ),
+            PlanAdjustmentRecord(
+                createdAt: cal.date(byAdding: .day, value: -12, to: .now)!,
+                severity: .pivot,
+                reason: "Goal evidence gap detected. Hydration actions added to sequence.",
+                associatedEvidence: ["Onboarding photo", "Puffy eyes tag ×2"]
+            ),
+        ]
     }
 }

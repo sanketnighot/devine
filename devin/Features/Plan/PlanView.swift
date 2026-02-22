@@ -7,6 +7,7 @@ struct PlanView: View {
     @State private var evidenceExpanded = false
     @State private var selectedAction: PerfectAction?
     @State private var showSubscores = false
+    @State private var showPlanHistory = false
 
     private var completedCount: Int {
         model.todayActions.filter { model.isActionDone($0) }.count
@@ -47,6 +48,9 @@ struct PlanView: View {
             }
             .navigationDestination(isPresented: $showSubscores) {
                 SubscoreBreakdownView(model: model)
+            }
+            .navigationDestination(isPresented: $showPlanHistory) {
+                PlanHistoryView(model: model)
             }
         }
         .tint(DevineTheme.Colors.ctaPrimary)
@@ -307,6 +311,24 @@ struct PlanView: View {
                     .font(.caption)
                     .foregroundStyle(DevineTheme.Colors.textSecondary)
                     .lineSpacing(2)
+
+                if !model.planAdjustmentHistory.isEmpty {
+                    Button {
+                        DevineHaptic.tap.fire()
+                        withAnimation(DevineTheme.Motion.quick) { showPlanHistory = true }
+                    } label: {
+                        HStack {
+                            Text("View plan history")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(DevineTheme.Colors.ctaPrimary)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(DevineTheme.Colors.textMuted)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
     }

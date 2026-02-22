@@ -1,4 +1,7 @@
+import AVFoundation
+import Photos
 import SwiftUI
+import UIKit
 
 struct OnboardingResult {
     let goal: GlowGoal
@@ -18,6 +21,19 @@ struct OnboardingFlowView: View {
     @State private var step: OnboardingStep = .welcome
     @State private var selectedGoal: GlowGoal?
     @State private var didProvidePhotoEvidence = false
+
+    // Photo capture state
+    @State private var selectedPreviewImage: UIImage?
+    @State private var selectedAssetLocalIdentifier: String?
+    @State private var selectedSource: MirrorPhotoSource?
+    @State private var selectedPhotoCapturedAt: Date?
+    @State private var showImageSourcePicker = false
+    @State private var showPhotoPicker = false
+    @State private var showCameraCapture = false
+    @State private var isSavingImage = false
+    @State private var cameraPermissionAlert = false
+    @State private var photoPermissionAlert = false
+    @State private var photoInlineError: String?
 
     var body: some View {
         VStack(spacing: DevineTheme.Spacing.xxl) {
@@ -39,6 +55,47 @@ struct OnboardingFlowView: View {
             .animation(DevineTheme.Motion.standard, value: step)
         )
         .foregroundStyle(DevineTheme.Colors.textPrimary)
+        .mirrorImageSourcePicker(
+            isPresented: $showImageSourcePicker,
+            onCamera: requestCameraAndPresentCapture,
+            onPhotoLibrary: {
+                Task { await requestPhotosAndPresentPicker() }
+            }
+        )
+        .mirrorPhotoLibraryPicker(
+            isPresented: $showPhotoPicker,
+            onSelection: { assetIdentifier, previewImage in
+                Task { await handleSelectedPhotoAsset(assetIdentifier: assetIdentifier, previewImage: previewImage) }
+            }
+        )
+        .fullScreenCover(isPresented: $showCameraCapture) {
+            CameraCaptureView(
+                onImageCaptured: { image in
+                    showCameraCapture = false
+                    Task { await handleCapturedImage(image) }
+                },
+                onCancel: { showCameraCapture = false }
+            )
+            .ignoresSafeArea()
+        }
+        .alert("Camera access needed", isPresented: $cameraPermissionAlert) {
+            Button("Open Settings") {
+                guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
+                UIApplication.shared.open(settingsURL)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Allow camera access to capture your check-in photo.")
+        }
+        .alert("Photos access needed", isPresented: $photoPermissionAlert) {
+            Button("Open Settings") {
+                guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
+                UIApplication.shared.open(settingsURL)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Allow Photos access to choose an existing photo.")
+        }
     }
 
     private var gradientForStep: [Color] {
@@ -237,47 +294,87 @@ struct OnboardingFlowView: View {
                     .lineSpacing(3)
             }
 
-            // Photo illustration
+            // Photo preview or illustration
             SurfaceCard {
                 VStack(spacing: DevineTheme.Spacing.lg) {
-                    ZStack {
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        DevineTheme.Colors.ctaPrimary.opacity(0.1),
-                                        DevineTheme.Colors.ctaSecondary.opacity(0.08)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
+                    if let selectedPreviewImage {
+                        ZStack(alignment: .topTrailing) {
+                            Image(uiImage: selectedPreviewImage)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 120, height: 120)
+                                .clipShape(Circle())
+                                .overlay(
+                                    Circle()
+                                        .stroke(DevineTheme.Colors.ctaPrimary.opacity(0.3), lineWidth: 2)
                                 )
-                            )
-                            .frame(width: 72, height: 72)
 
-                        Image(systemName: "camera.viewfinder")
-                            .font(.system(size: 28))
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: DevineTheme.Gradients.primaryCTA,
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.title3)
+                                .foregroundStyle(DevineTheme.Colors.successAccent)
+                                .background(
+                                    Circle()
+                                        .fill(DevineTheme.Colors.bgPrimary)
+                                        .padding(-2)
                                 )
-                            )
+                                .offset(x: 4, y: -4)
+                        }
+
+                        Text("Looking great! Tap to retake.")
+                            .font(.caption)
+                            .foregroundStyle(DevineTheme.Colors.textMuted)
+                    } else {
+                        ZStack {
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            DevineTheme.Colors.ctaPrimary.opacity(0.1),
+                                            DevineTheme.Colors.ctaSecondary.opacity(0.08),
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 72, height: 72)
+
+                            Image(systemName: "camera.viewfinder")
+                                .font(.system(size: 28))
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: DevineTheme.Gradients.primaryCTA,
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                        }
+
+                        Text("Stored only on your device")
+                            .font(.caption)
+                            .foregroundStyle(DevineTheme.Colors.textMuted)
                     }
-
-                    Text("Stored only on your device")
-                        .font(.caption)
-                        .foregroundStyle(DevineTheme.Colors.textMuted)
                 }
                 .frame(maxWidth: .infinity)
+                .onTapGesture {
+                    if selectedPreviewImage != nil {
+                        showImageSourcePicker = true
+                    }
+                }
+            }
+
+            if let photoInlineError {
+                Text(photoInlineError)
+                    .font(.caption)
+                    .foregroundStyle(DevineTheme.Colors.errorAccent)
             }
 
             VStack(spacing: DevineTheme.Spacing.md) {
-                gradientButton(label: "Add quick check-in now") {
+                gradientButton(label: selectedPreviewImage != nil ? "Continue" : "Add quick check-in now", disabled: isSavingImage) {
                     DevineHaptic.tap.fire()
-                    didProvidePhotoEvidence = true
-                    withAnimation(DevineTheme.Motion.standard) {
-                        step = .preview
+                    if selectedPreviewImage != nil {
+                        withAnimation(DevineTheme.Motion.standard) { step = .preview }
+                    } else {
+                        showImageSourcePicker = true
                     }
                 }
 
@@ -422,6 +519,106 @@ struct OnboardingFlowView: View {
                     )
                 }
             }
+        }
+    }
+
+    // MARK: - Gradient Button Helper
+
+    // MARK: - Photo Logic
+
+    @MainActor
+    private func requestPhotosAndPresentPicker() async {
+        photoInlineError = nil
+        let status = await MirrorPhotoLibraryService.shared.requestReadWriteAuthorizationIfNeeded()
+        switch status {
+        case .authorized, .limited:
+            showPhotoPicker = true
+        case .denied, .restricted:
+            photoPermissionAlert = true
+        case .notDetermined:
+            photoInlineError = "Photos permission state is unavailable."
+        @unknown default:
+            photoInlineError = "Photos permission state is unavailable."
+        }
+    }
+
+    private func requestCameraAndPresentCapture() {
+        photoInlineError = nil
+        if !UIImagePickerController.isSourceTypeAvailable(.camera) {
+            photoInlineError = "Camera is not available on this device."
+            return
+        }
+
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        switch status {
+        case .authorized:
+            showCameraCapture = true
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                DispatchQueue.main.async {
+                    if granted {
+                        showCameraCapture = true
+                    } else {
+                        cameraPermissionAlert = true
+                    }
+                }
+            }
+        case .denied, .restricted:
+            cameraPermissionAlert = true
+        @unknown default:
+            photoInlineError = "Camera permission state is unavailable."
+        }
+    }
+
+    @MainActor
+    private func handleCapturedImage(_ image: UIImage) async {
+        photoInlineError = nil
+        isSavingImage = true
+        defer { isSavingImage = false }
+
+        do {
+            let identifier = try await MirrorPhotoLibraryService.shared.saveCapturedImageAndAddToAlbum(image)
+            selectedAssetLocalIdentifier = identifier
+            selectedSource = .camera
+            selectedPhotoCapturedAt = MirrorPhotoLibraryService.shared.assetCreationDate(localIdentifier: identifier)
+            selectedPreviewImage = image
+            didProvidePhotoEvidence = true
+        } catch {
+            photoInlineError = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func handleSelectedPhotoAsset(assetIdentifier: String?, previewImage: UIImage?) async {
+        photoInlineError = nil
+        isSavingImage = true
+        defer { isSavingImage = false }
+
+        do {
+            guard let selectedIdentifier = assetIdentifier else {
+                throw MirrorPhotoLibraryError.missingAssetReference
+            }
+            try await MirrorPhotoLibraryService.shared.addAssetToCheckinsAlbum(localIdentifier: selectedIdentifier)
+
+            selectedAssetLocalIdentifier = selectedIdentifier
+            selectedSource = .photosLibrary
+            selectedPhotoCapturedAt = MirrorPhotoLibraryService.shared.assetCreationDate(localIdentifier: selectedIdentifier)
+            didProvidePhotoEvidence = true
+
+            if let previewImage {
+                selectedPreviewImage = previewImage
+                return
+            }
+
+            MirrorPhotoLibraryService.shared.requestImage(
+                localIdentifier: selectedIdentifier,
+                targetSize: CGSize(width: 720, height: 720),
+                contentMode: .aspectFit
+            ) { image in
+                selectedPreviewImage = image
+            }
+        } catch {
+            photoInlineError = error.localizedDescription
         }
     }
 

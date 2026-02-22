@@ -6,6 +6,10 @@ struct SettingsView: View {
     @AppStorage("setting_weekly_recap") private var weeklyRecapEnabled = true
 
     @State private var showHealthConnect = false
+    @State private var showManageData = false
+    @State private var showExportData = false
+    @State private var showDeleteConfirmation = false
+    @State private var showDeleteFinalConfirmation = false
 
     var body: some View {
         ScrollView {
@@ -33,6 +37,30 @@ struct SettingsView: View {
         .sheet(isPresented: $showHealthConnect) {
             HealthConnectSheet()
                 .presentationBackground(DevineTheme.Colors.bgPrimary)
+        }
+        .sheet(isPresented: $showManageData) {
+            ManageDataSheet()
+                .presentationBackground(DevineTheme.Colors.bgPrimary)
+        }
+        .sheet(isPresented: $showExportData) {
+            ExportDataSheet()
+                .presentationBackground(DevineTheme.Colors.bgPrimary)
+        }
+        .alert("Delete account?", isPresented: $showDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete everything", role: .destructive) {
+                showDeleteFinalConfirmation = true
+            }
+        } message: {
+            Text("This will permanently erase all your data from this device. This cannot be undone.")
+        }
+        .alert("Are you absolutely sure?", isPresented: $showDeleteFinalConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Yes, delete", role: .destructive) {
+                DevineHaptic.tap.fire()
+            }
+        } message: {
+            Text("There is no way to recover your glow history after this.")
         }
     }
 
@@ -145,32 +173,50 @@ struct SettingsView: View {
 
             SurfaceCard(padding: DevineTheme.Spacing.xs) {
                 VStack(spacing: 0) {
-                    settingRow(
-                        icon: "externaldrive",
-                        iconColor: DevineTheme.Colors.textMuted,
-                        title: "Manage my data",
-                        trailing: .chevron
-                    )
+                    Button {
+                        DevineHaptic.tap.fire()
+                        showManageData = true
+                    } label: {
+                        settingRow(
+                            icon: "externaldrive",
+                            iconColor: DevineTheme.Colors.textMuted,
+                            title: "Manage my data",
+                            trailing: .chevron
+                        )
+                    }
+                    .buttonStyle(.plain)
 
                     Divider()
                         .padding(.horizontal, DevineTheme.Spacing.lg)
 
-                    settingRow(
-                        icon: "square.and.arrow.up",
-                        iconColor: DevineTheme.Colors.textMuted,
-                        title: "Export my data",
-                        trailing: .chevron
-                    )
+                    Button {
+                        DevineHaptic.tap.fire()
+                        showExportData = true
+                    } label: {
+                        settingRow(
+                            icon: "square.and.arrow.up",
+                            iconColor: DevineTheme.Colors.textMuted,
+                            title: "Export my data",
+                            trailing: .chevron
+                        )
+                    }
+                    .buttonStyle(.plain)
 
                     Divider()
                         .padding(.horizontal, DevineTheme.Spacing.lg)
 
-                    settingRow(
-                        icon: "trash",
-                        iconColor: DevineTheme.Colors.errorAccent,
-                        title: "Delete account",
-                        trailing: .none
-                    )
+                    Button {
+                        DevineHaptic.tap.fire()
+                        showDeleteConfirmation = true
+                    } label: {
+                        settingRow(
+                            icon: "trash",
+                            iconColor: DevineTheme.Colors.errorAccent,
+                            title: "Delete account",
+                            trailing: .none
+                        )
+                    }
+                    .buttonStyle(.plain)
                 }
             }
 

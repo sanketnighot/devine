@@ -17,7 +17,7 @@ struct MainTabsView: View {
                     Label("Plan", systemImage: "list.bullet.clipboard")
                 }
 
-            SocialView()
+            SocialView(model: model)
                 .tabItem {
                     Label("Social", systemImage: "person.3.fill")
                 }

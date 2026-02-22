@@ -1,12 +1,23 @@
 import SwiftUI
 
 struct SocialView: View {
+    @ObservedObject var model: DevineAppModel
+
+    @State private var showCreateCircle = false
+    @State private var showJoinCircle = false
+    @State private var showChallenge = false
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: DevineTheme.Spacing.xl) {
-                    circleEmptyState
-                    challengeTeaser
+                    if model.glowCircle != nil {
+                        ActiveCircleView(model: model, showChallenge: $showChallenge)
+                        challengeTeaserActive
+                    } else {
+                        circleEmptyState
+                        challengeTeaser
+                    }
                     safetyFooter
                 }
                 .padding(.horizontal, DevineTheme.Spacing.lg)
@@ -25,6 +36,24 @@ struct SocialView: View {
             .navigationTitle("Glow Together")
         }
         .tint(DevineTheme.Colors.ctaPrimary)
+        .sheet(isPresented: $showCreateCircle) {
+            CreateCircleSheet { name in
+                model.createCircle(name: name)
+            }
+            .presentationBackground(DevineTheme.Colors.bgPrimary)
+        }
+        .sheet(isPresented: $showJoinCircle) {
+            JoinCircleSheet { code in
+                model.joinCircle(inviteCode: code)
+            }
+            .presentationBackground(DevineTheme.Colors.bgPrimary)
+        }
+        .sheet(isPresented: $showChallenge) {
+            if let circle = model.glowCircle {
+                GlowChallengeDetailView(circle: circle)
+                    .presentationBackground(DevineTheme.Colors.bgPrimary)
+            }
+        }
     }
 
     // MARK: - Circle Empty State
@@ -32,7 +61,6 @@ struct SocialView: View {
     private var circleEmptyState: some View {
         GradientCard(colors: DevineTheme.Gradients.heroCard, showGlow: true) {
             VStack(spacing: DevineTheme.Spacing.xl) {
-                // Illustration composition
                 ZStack {
                     Circle()
                         .fill(Color.white.opacity(0.1))
@@ -57,7 +85,8 @@ struct SocialView: View {
 
                 VStack(spacing: DevineTheme.Spacing.md) {
                     Button {
-                        // Circle creation flow (not yet implemented)
+                        DevineHaptic.tap.fire()
+                        showCreateCircle = true
                     } label: {
                         Text("Create your circle")
                             .font(.subheadline.weight(.bold))
@@ -72,7 +101,8 @@ struct SocialView: View {
                     .buttonStyle(.plain)
 
                     Button {
-                        // Join flow (not yet implemented)
+                        DevineHaptic.tap.fire()
+                        showJoinCircle = true
                     } label: {
                         Text("Join with invite code")
                             .font(.subheadline.weight(.medium))
@@ -86,7 +116,7 @@ struct SocialView: View {
         }
     }
 
-    // MARK: - Challenge Teaser
+    // MARK: - Challenge Teaser (no circle yet)
 
     private var challengeTeaser: some View {
         SurfaceCard {
@@ -97,7 +127,7 @@ struct SocialView: View {
                             LinearGradient(
                                 colors: [
                                     DevineTheme.Colors.warningAccent.opacity(0.15),
-                                    DevineTheme.Colors.ctaSecondary.opacity(0.1)
+                                    DevineTheme.Colors.ctaSecondary.opacity(0.1),
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
@@ -134,6 +164,66 @@ struct SocialView: View {
                 Spacer()
             }
         }
+    }
+
+    // MARK: - Challenge Teaser Active (has circle)
+
+    private var challengeTeaserActive: some View {
+        Button {
+            DevineHaptic.tap.fire()
+            showChallenge = true
+        } label: {
+            SurfaceCard {
+                HStack(spacing: DevineTheme.Spacing.lg) {
+                    ZStack {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        DevineTheme.Colors.warningAccent.opacity(0.15),
+                                        DevineTheme.Colors.ctaSecondary.opacity(0.1),
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 48, height: 48)
+
+                        Image(systemName: "trophy.fill")
+                            .font(.title3)
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [DevineTheme.Colors.warningAccent, DevineTheme.Colors.ctaSecondary],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                    }
+
+                    VStack(alignment: .leading, spacing: DevineTheme.Spacing.xs) {
+                        Text("Glow Challenges")
+                            .font(.system(.subheadline, design: .rounded, weight: .bold))
+
+                        if let challenge = model.glowCircle?.activeChallenge {
+                            Text("\(Int(challenge.overallProgress * 100))% team progress")
+                                .font(.caption)
+                                .foregroundStyle(DevineTheme.Colors.textSecondary)
+                        }
+
+                        Text("Tap to view details")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(DevineTheme.Colors.ctaPrimary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(DevineTheme.Colors.textMuted)
+                }
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Safety Footer
