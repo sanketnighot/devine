@@ -1,32 +1,167 @@
 import SwiftUI
 
 struct SocialView: View {
-    @State private var circleMemberCount = 3
-
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Support Circles") {
-                    Text("Private by default. No public rankings. No appearance leaderboards.")
-                        .font(.footnote)
-                        .foregroundStyle(DevineTheme.Colors.textSecondary)
-                    Stepper("Members: \(circleMemberCount)", value: $circleMemberCount, in: 3...8)
-                    Button("Create Circle") {}
-                    Button("Join via invite code") {}
+            ScrollView {
+                VStack(spacing: DevineTheme.Spacing.xl) {
+                    circleEmptyState
+                    challengeTeaser
+                    safetyFooter
                 }
-
-                Section("Glow Challenges") {
-                    Text("Co-op only. Win as a team through daily check-ins.")
-                        .font(.footnote)
-                        .foregroundStyle(DevineTheme.Colors.textSecondary)
-                    Button("Start 7-day consistency challenge") {}
-                }
+                .padding(.horizontal, DevineTheme.Spacing.lg)
+                .padding(.top, DevineTheme.Spacing.md)
+                .padding(.bottom, DevineTheme.Spacing.xxxl)
             }
-            .scrollContentBackground(.hidden)
-            .background(DevineTheme.Colors.bgPrimary)
+            .background(
+                LinearGradient(
+                    colors: DevineTheme.Gradients.screenBackground,
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
+            )
             .foregroundStyle(DevineTheme.Colors.textPrimary)
-            .navigationTitle("Social")
+            .navigationTitle("Glow Together")
         }
         .tint(DevineTheme.Colors.ctaPrimary)
+    }
+
+    // MARK: - Circle Empty State
+
+    private var circleEmptyState: some View {
+        GradientCard(colors: DevineTheme.Gradients.heroCard, showGlow: true) {
+            VStack(spacing: DevineTheme.Spacing.xl) {
+                // Illustration composition
+                ZStack {
+                    Circle()
+                        .fill(Color.white.opacity(0.1))
+                        .frame(width: 88, height: 88)
+
+                    Image(systemName: "person.3.fill")
+                        .font(.system(size: 36))
+                        .foregroundStyle(DevineTheme.Colors.textOnGradient)
+                }
+
+                VStack(spacing: DevineTheme.Spacing.sm) {
+                    Text("Better together")
+                        .font(.title3.bold())
+                        .foregroundStyle(DevineTheme.Colors.textOnGradient)
+
+                    Text("Start a circle with your closest 3–8 friends.\nStay consistent together, celebrate wins,\nand keep each other glowing.")
+                        .font(.subheadline)
+                        .foregroundStyle(DevineTheme.Colors.textOnGradient.opacity(0.85))
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(3)
+                }
+
+                VStack(spacing: DevineTheme.Spacing.md) {
+                    Button {
+                        // Circle creation flow (not yet implemented)
+                    } label: {
+                        Text("Create your circle")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(DevineTheme.Gradients.heroCard.first ?? .pink)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, DevineTheme.Spacing.md)
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(Color.white)
+                            )
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        // Join flow (not yet implemented)
+                    } label: {
+                        Text("Join with invite code")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(DevineTheme.Colors.textOnGradient.opacity(0.8))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .multilineTextAlignment(.center)
+        }
+    }
+
+    // MARK: - Challenge Teaser
+
+    private var challengeTeaser: some View {
+        SurfaceCard {
+            HStack(spacing: DevineTheme.Spacing.lg) {
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    DevineTheme.Colors.warningAccent.opacity(0.15),
+                                    DevineTheme.Colors.ctaSecondary.opacity(0.1)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 48, height: 48)
+
+                    Image(systemName: "trophy.fill")
+                        .font(.title3)
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [DevineTheme.Colors.warningAccent, DevineTheme.Colors.ctaSecondary],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                }
+
+                VStack(alignment: .leading, spacing: DevineTheme.Spacing.xs) {
+                    Text("Glow Challenges")
+                        .font(.system(.subheadline, design: .rounded, weight: .bold))
+
+                    Text("7-day consistency challenge.\nWin as a team, not against each other.")
+                        .font(.caption)
+                        .foregroundStyle(DevineTheme.Colors.textSecondary)
+                        .lineSpacing(2)
+
+                    Text("Coming with your first circle")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(DevineTheme.Colors.ctaPrimary)
+                        .padding(.top, DevineTheme.Spacing.xs)
+                }
+
+                Spacer()
+            }
+        }
+    }
+
+    // MARK: - Safety Footer
+
+    private var safetyFooter: some View {
+        VStack(spacing: DevineTheme.Spacing.sm) {
+            HStack(spacing: DevineTheme.Spacing.lg) {
+                safetyPoint(icon: "eye.slash", text: "No rankings")
+                safetyPoint(icon: "hand.raised", text: "No comparison")
+                safetyPoint(icon: "lock.shield", text: "Private")
+            }
+
+            Text("Your glow journey is yours. Circles are about support, not competition.")
+                .font(.caption2)
+                .foregroundStyle(DevineTheme.Colors.textMuted)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.top, DevineTheme.Spacing.sm)
+    }
+
+    private func safetyPoint(icon: String, text: String) -> some View {
+        VStack(spacing: DevineTheme.Spacing.xs) {
+            Image(systemName: icon)
+                .font(.caption)
+                .foregroundStyle(DevineTheme.Colors.textMuted)
+            Text(text)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(DevineTheme.Colors.textMuted)
+        }
     }
 }

@@ -9,6 +9,7 @@ struct AppRootView: View {
 #endif
 
     @StateObject private var model = DevineAppModel()
+    @State private var showSplash = true
 
     private var isSubscribed: Bool {
 #if DEBUG
@@ -58,5 +59,14 @@ struct AppRootView: View {
         .tint(DevineTheme.Colors.ctaPrimary)
         .animation(.easeInOut(duration: 0.2), value: hasCompletedOnboarding)
         .animation(.easeInOut(duration: 0.2), value: shouldShowPaywall)
+        .overlay {
+            if showSplash {
+                SplashView(isPresented: $showSplash)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .zIndex(1)
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: showSplash)
     }
 }

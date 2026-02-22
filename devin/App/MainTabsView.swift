@@ -22,7 +22,7 @@ struct MainTabsView: View {
                     Label("Social", systemImage: "person.3.fill")
                 }
 
-            ProfileView(isSubscribed: isSubscribed, onShowPaywall: onShowPaywall)
+            ProfileView(model: model, isSubscribed: isSubscribed, onShowPaywall: onShowPaywall)
                 .tabItem {
                     Label("Profile", systemImage: "person.crop.circle")
                 }

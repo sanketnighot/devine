@@ -22,7 +22,14 @@ struct MirrorTimelineView: View {
                 timelineContent
             }
         }
-        .background(DevineTheme.Colors.bgPrimary)
+        .background(
+            LinearGradient(
+                colors: DevineTheme.Gradients.screenBackground,
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+        )
         .navigationTitle("Progress Timeline")
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -46,18 +53,30 @@ struct MirrorTimelineView: View {
                 pendingDeleteEntryID = nil
             }
         } message: {
-            Text("This removes the entry from devine timeline only. Photo remains in Photos.")
+            Text("This removes the entry from devine only. The photo stays in your Photos library.")
         }
     }
 
+    // MARK: - Timeline Content
+
     private var timelineContent: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Latest to oldest")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(DevineTheme.Colors.textSecondary)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
+            VStack(alignment: .leading, spacing: DevineTheme.Spacing.lg) {
+                HStack {
+                    Text("Your journey")
+                        .font(.system(.caption, design: .rounded, weight: .bold))
+                        .foregroundStyle(DevineTheme.Colors.textMuted)
+                        .textCase(.uppercase)
+                        .tracking(0.5)
+
+                    Spacer()
+
+                    Text("\(model.mirrorCheckins.count) check-in\(model.mirrorCheckins.count == 1 ? "" : "s")")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(DevineTheme.Colors.textMuted)
+                }
+                .padding(.horizontal, DevineTheme.Spacing.lg)
+                .padding(.top, DevineTheme.Spacing.md)
 
                 ForEach(model.mirrorCheckins.sorted(by: { $0.createdAt > $1.createdAt })) { entry in
                     if MirrorPhotoLibraryService.shared.assetExists(localIdentifier: entry.assetLocalIdentifier) {
@@ -68,156 +87,179 @@ struct MirrorTimelineView: View {
                         }
                         .buttonStyle(.plain)
                         .contextMenu {
-                            Button("Delete entry", role: .destructive) {
+                            Button(role: .destructive) {
                                 pendingDeleteEntryID = entry.id
+                            } label: {
+                                Label("Delete entry", systemImage: "trash")
                             }
                         }
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, DevineTheme.Spacing.lg)
                     } else {
                         unavailableCard(entry: entry)
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, DevineTheme.Spacing.lg)
                     }
                 }
             }
-            .padding(.bottom, 16)
+            .padding(.bottom, DevineTheme.Spacing.xxxl)
         }
     }
 
-    private var loadingView: some View {
-        VStack(spacing: 12) {
-            ProgressView()
-            Text("Loading your timeline...")
-                .font(.subheadline)
-                .foregroundStyle(DevineTheme.Colors.textSecondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var emptyView: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "photo.on.rectangle.angled")
-                .font(.title)
-                .foregroundStyle(DevineTheme.Colors.textMuted)
-            Text("No check-ins yet")
-                .font(.headline)
-            Text("Add your first mirror check-in photo to start visual progress.")
-                .font(.subheadline)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(DevineTheme.Colors.textSecondary)
-        }
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var permissionBlockedView: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "lock.shield")
-                .font(.title)
-                .foregroundStyle(DevineTheme.Colors.textMuted)
-            Text("Photo access is blocked")
-                .font(.headline)
-            Text("Allow Photos access to view your mirror timeline.")
-                .font(.subheadline)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(DevineTheme.Colors.textSecondary)
-
-            Button("Open Settings") {
-                guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
-                UIApplication.shared.open(settingsURL)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(DevineTheme.Colors.ctaPrimary)
-        }
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func errorView(message: String) -> some View {
-        VStack(spacing: 12) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.title)
-                .foregroundStyle(DevineTheme.Colors.warningAccent)
-            Text(message)
-                .font(.subheadline)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(DevineTheme.Colors.textSecondary)
-            Button("Retry") {
-                Task {
-                    await requestPermissionAndLoad()
-                }
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(DevineTheme.Colors.ctaPrimary)
-        }
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
+    // MARK: - Timeline Card
 
     private func timelineCard(entry: MirrorCheckinEntry) -> some View {
-        HStack(spacing: 12) {
-            PhotoAssetThumbnailView(localIdentifier: entry.assetLocalIdentifier)
+        HStack(spacing: DevineTheme.Spacing.lg) {
+            PhotoAssetThumbnailView(
+                localIdentifier: entry.assetLocalIdentifier,
+                size: CGSize(width: 72, height: 72)
+            )
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: DevineTheme.Spacing.xs) {
                 Text(entry.createdAt.formatted(date: .abbreviated, time: .shortened))
-                    .font(.subheadline.weight(.semibold))
+                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
 
                 if !entry.tags.isEmpty {
-                    Text(entry.tags.joined(separator: " • "))
-                        .font(.caption)
-                        .foregroundStyle(DevineTheme.Colors.textSecondary)
-                        .lineLimit(1)
+                    HStack(spacing: DevineTheme.Spacing.xs) {
+                        ForEach(entry.tags.prefix(3), id: \.self) { tag in
+                            Text(tag)
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(moodColor(for: tag))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(
+                                    Capsule(style: .continuous)
+                                        .fill(moodColor(for: tag).opacity(0.12))
+                                )
+                        }
+                    }
                 }
 
                 if !entry.note.isEmpty {
                     Text(entry.note)
                         .font(.caption)
                         .foregroundStyle(DevineTheme.Colors.textSecondary)
-                        .lineLimit(2)
+                        .lineLimit(1)
                 }
             }
+
             Spacer()
+
             Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
+                .font(.caption2.weight(.bold))
                 .foregroundStyle(DevineTheme.Colors.textMuted)
         }
-        .padding(12)
+        .padding(DevineTheme.Spacing.md)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: DevineTheme.Radius.xl, style: .continuous)
                 .fill(DevineTheme.Colors.surfaceCard)
         )
     }
 
+    // MARK: - Unavailable Card
+
     private func unavailableCard(entry: MirrorCheckinEntry) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(DevineTheme.Colors.bgSecondary)
-                    .frame(width: 84, height: 84)
-                    .overlay(
-                        Image(systemName: "photo.slash")
-                            .foregroundStyle(DevineTheme.Colors.textMuted)
-                    )
+        HStack(spacing: DevineTheme.Spacing.lg) {
+            RoundedRectangle(cornerRadius: DevineTheme.Radius.md, style: .continuous)
+                .fill(DevineTheme.Colors.bgSecondary)
+                .frame(width: 72, height: 72)
+                .overlay(
+                    Image(systemName: "photo.slash")
+                        .font(.body)
+                        .foregroundStyle(DevineTheme.Colors.textMuted)
+                )
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(entry.createdAt.formatted(date: .abbreviated, time: .shortened))
-                        .font(.subheadline.weight(.semibold))
-                    Text("Photo unavailable")
-                        .font(.caption)
-                        .foregroundStyle(DevineTheme.Colors.textSecondary)
-                }
-                Spacer()
+            VStack(alignment: .leading, spacing: DevineTheme.Spacing.xs) {
+                Text(entry.createdAt.formatted(date: .abbreviated, time: .shortened))
+                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
+
+                Text("Photo unavailable")
+                    .font(.caption)
+                    .foregroundStyle(DevineTheme.Colors.textMuted)
             }
 
-            Button("Delete entry", role: .destructive) {
+            Spacer()
+
+            Button {
                 pendingDeleteEntryID = entry.id
+            } label: {
+                Image(systemName: "trash")
+                    .font(.caption)
+                    .foregroundStyle(DevineTheme.Colors.errorAccent)
+                    .frame(width: 32, height: 32)
+                    .background(
+                        Circle()
+                            .fill(DevineTheme.Colors.errorAccent.opacity(0.1))
+                    )
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.plain)
         }
-        .padding(12)
+        .padding(DevineTheme.Spacing.md)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: DevineTheme.Radius.xl, style: .continuous)
                 .fill(DevineTheme.Colors.surfaceCard)
         )
+        .opacity(0.7)
+    }
+
+    // MARK: - State Views
+
+    private var loadingView: some View {
+        VStack(spacing: DevineTheme.Spacing.lg) {
+            ProgressView()
+                .tint(DevineTheme.Colors.ctaPrimary)
+            Text("Loading your timeline...")
+                .font(.system(.subheadline, design: .rounded, weight: .medium))
+                .foregroundStyle(DevineTheme.Colors.textSecondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var emptyView: some View {
+        DevineEmptyState(
+            icon: "photo.on.rectangle.angled",
+            title: "No check-ins yet",
+            message: "Add your first mirror check-in photo to start tracking your visual progress."
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var permissionBlockedView: some View {
+        DevineEmptyState(
+            icon: "lock.shield",
+            title: "Photo access needed",
+            message: "Allow Photos access to view your mirror timeline.",
+            ctaLabel: "Open Settings"
+        ) {
+            guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
+            UIApplication.shared.open(settingsURL)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func errorView(message: String) -> some View {
+        DevineEmptyState(
+            icon: "exclamationmark.triangle",
+            title: "Something went wrong",
+            message: message,
+            ctaLabel: "Retry"
+        ) {
+            Task {
+                await requestPermissionAndLoad()
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Helpers
+
+    private func moodColor(for tag: String) -> Color {
+        switch tag.lowercased() {
+        case "good sleep": DevineTheme.Colors.successAccent
+        case "hydrated": DevineTheme.Colors.ctaPrimary
+        case "low energy": DevineTheme.Colors.warningAccent
+        case "high stress": DevineTheme.Colors.errorAccent
+        case "puffy eyes": DevineTheme.Colors.ctaSecondary
+        default: DevineTheme.Colors.textMuted
+        }
     }
 
     private func requestPermissionAndLoad() async {

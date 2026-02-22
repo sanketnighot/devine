@@ -10,7 +10,6 @@ struct MirrorCheckinSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var selectedTags: Set<String> = []
     @State private var note: String = ""
-    @State private var sheetHeight: CGFloat = 520
 
     @State private var selectedPreviewImage: UIImage?
     @State private var selectedAssetLocalIdentifier: String?
@@ -30,105 +29,59 @@ struct MirrorCheckinSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Add image (optional)") {
-                    if let selectedPreviewImage {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Image(uiImage: selectedPreviewImage)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(height: 180)
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            ScrollView {
+                VStack(alignment: .leading, spacing: DevineTheme.Spacing.xl) {
+                    imageSection
+                    moodSection
+                    noteSection
 
-                            if let selectedSource {
-                                Text(selectedSource == .camera ? "Source: Camera" : "Source: Photos")
-                                    .font(.footnote)
-                                    .foregroundStyle(DevineTheme.Colors.textSecondary)
-                            }
-                        }
-                    }
-
-                    HStack {
-                        Button(selectedAssetLocalIdentifier == nil ? "Add image" : "Replace image") {
-                            showImageSourcePicker = true
-                        }
-
-                        if selectedAssetLocalIdentifier != nil {
-                            Button("Remove", role: .destructive) {
-                                selectedPreviewImage = nil
-                                selectedAssetLocalIdentifier = nil
-                                selectedSource = nil
-                                selectedPhotoCapturedAt = nil
-                            }
-                        }
-                    }
-                    .disabled(isSavingImage)
-                }
-
-                Section("How are you feeling today?") {
-                    ForEach(tags, id: \.self) { tag in
-                        Button {
-                            if selectedTags.contains(tag) {
-                                selectedTags.remove(tag)
-                            } else {
-                                selectedTags.insert(tag)
-                            }
-                        } label: {
-                            HStack {
-                                Text(tag)
-                                Spacer()
-                                if selectedTags.contains(tag) {
-                                    Image(systemName: "checkmark")
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Section("Optional note") {
-                    TextField("What changed today?", text: $note, axis: .vertical)
-                        .lineLimit(2...4)
-                }
-
-                if let inlineError {
-                    Section {
+                    if let inlineError {
                         Text(inlineError)
-                            .font(.footnote)
+                            .font(.caption)
                             .foregroundStyle(DevineTheme.Colors.errorAccent)
+                            .padding(.horizontal, DevineTheme.Spacing.xs)
                     }
-                }
 
-                Section {
-                    Text("Private by default. Your check-in is used only to adapt your plan.")
-                        .font(.footnote)
-                        .foregroundStyle(DevineTheme.Colors.textSecondary)
+                    privacyNote
                 }
+                .padding(.horizontal, DevineTheme.Spacing.lg)
+                .padding(.top, DevineTheme.Spacing.lg)
+                .padding(.bottom, DevineTheme.Spacing.xxxl)
             }
-            .scrollContentBackground(.hidden)
-            .background(DevineTheme.Colors.bgPrimary)
+            .background(
+                LinearGradient(
+                    colors: DevineTheme.Gradients.screenBackground,
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
+            )
             .foregroundStyle(DevineTheme.Colors.textPrimary)
             .navigationTitle("Mirror check-in")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(isSavingImage ? "Saving..." : "Save") {
+                    Button {
                         saveCheckin()
+                    } label: {
+                        Text(isSavingImage ? "Saving..." : "Save")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(DevineTheme.Colors.ctaPrimary)
                     }
                     .disabled(isSavingImage)
                 }
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button {
                         dismiss()
+                    } label: {
+                        Text("Cancel")
+                            .font(.subheadline)
+                            .foregroundStyle(DevineTheme.Colors.textSecondary)
                     }
                 }
             }
         }
-        .onMeasuredHeight { measured in
-            let target = min(max(measured + 20, 460), 760)
-            if abs(target - sheetHeight) > 1 {
-                sheetHeight = target
-            }
-        }
-        .presentationDetents([.height(sheetHeight), .large])
+        .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .tint(DevineTheme.Colors.ctaPrimary)
         .mirrorImageSourcePicker(
@@ -180,7 +133,183 @@ struct MirrorCheckinSheet: View {
         } message: {
             Text("Allow Photos access to attach existing photos without creating duplicates.")
         }
+        .onAppear {
+            DevineHaptic.sheetPresent.fire()
+        }
     }
+
+    // MARK: - Image Section
+
+    private var imageSection: some View {
+        VStack(alignment: .leading, spacing: DevineTheme.Spacing.md) {
+            sectionLabel("Photo (optional)")
+
+            if let selectedPreviewImage {
+                ZStack(alignment: .topTrailing) {
+                    Image(uiImage: selectedPreviewImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(height: 220)
+                        .frame(maxWidth: .infinity)
+                        .clipShape(RoundedRectangle(cornerRadius: DevineTheme.Radius.xl, style: .continuous))
+
+                    if let selectedSource {
+                        Text(selectedSource == .camera ? "Camera" : "Photos")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(Color.black.opacity(0.5))
+                            )
+                            .padding(DevineTheme.Spacing.sm)
+                    }
+                }
+
+                HStack(spacing: DevineTheme.Spacing.sm) {
+                    Button {
+                        DevineHaptic.tap.fire()
+                        showImageSourcePicker = true
+                    } label: {
+                        Label("Replace", systemImage: "arrow.triangle.2.circlepath")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(DevineTheme.Colors.ctaPrimary)
+                            .padding(.horizontal, DevineTheme.Spacing.md)
+                            .padding(.vertical, DevineTheme.Spacing.sm)
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(DevineTheme.Colors.ctaPrimary.opacity(0.1))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isSavingImage)
+
+                    Button {
+                        DevineHaptic.tap.fire()
+                        self.selectedPreviewImage = nil
+                        self.selectedAssetLocalIdentifier = nil
+                        self.selectedSource = nil
+                        self.selectedPhotoCapturedAt = nil
+                    } label: {
+                        Label("Remove", systemImage: "trash")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(DevineTheme.Colors.errorAccent)
+                            .padding(.horizontal, DevineTheme.Spacing.md)
+                            .padding(.vertical, DevineTheme.Spacing.sm)
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(DevineTheme.Colors.errorAccent.opacity(0.1))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isSavingImage)
+                }
+            } else {
+                Button {
+                    DevineHaptic.tap.fire()
+                    showImageSourcePicker = true
+                } label: {
+                    VStack(spacing: DevineTheme.Spacing.md) {
+                        ZStack {
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            DevineTheme.Colors.ctaPrimary.opacity(0.1),
+                                            DevineTheme.Colors.ctaSecondary.opacity(0.08)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 56, height: 56)
+
+                            Image(systemName: "camera.viewfinder")
+                                .font(.title3)
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: DevineTheme.Gradients.primaryCTA,
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                        }
+
+                        Text("Add a photo")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(DevineTheme.Colors.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 140)
+                    .background(
+                        RoundedRectangle(cornerRadius: DevineTheme.Radius.xl, style: .continuous)
+                            .fill(DevineTheme.Colors.surfaceCard)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DevineTheme.Radius.xl, style: .continuous)
+                            .stroke(DevineTheme.Colors.borderSubtle, style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(isSavingImage)
+            }
+        }
+    }
+
+    // MARK: - Mood Section
+
+    private var moodSection: some View {
+        VStack(alignment: .leading, spacing: DevineTheme.Spacing.md) {
+            sectionLabel("How are you feeling?")
+
+            MoodChipGrid(tags: tags, selectedTags: $selectedTags)
+        }
+    }
+
+    // MARK: - Note Section
+
+    private var noteSection: some View {
+        VStack(alignment: .leading, spacing: DevineTheme.Spacing.md) {
+            sectionLabel("Note (optional)")
+
+            TextField("What changed today?", text: $note, axis: .vertical)
+                .lineLimit(2...4)
+                .font(.body)
+                .padding(DevineTheme.Spacing.lg)
+                .background(
+                    RoundedRectangle(cornerRadius: DevineTheme.Radius.lg, style: .continuous)
+                        .fill(DevineTheme.Colors.surfaceCard)
+                )
+        }
+    }
+
+    // MARK: - Privacy Note
+
+    private var privacyNote: some View {
+        HStack(spacing: DevineTheme.Spacing.sm) {
+            Image(systemName: "lock.shield")
+                .font(.caption2)
+                .foregroundStyle(DevineTheme.Colors.textMuted)
+
+            Text("Private by default. Your check-in adapts your plan — nothing leaves this device.")
+                .font(.caption2)
+                .foregroundStyle(DevineTheme.Colors.textMuted)
+        }
+        .padding(.top, DevineTheme.Spacing.sm)
+    }
+
+    // MARK: - Helpers
+
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.system(.caption, design: .rounded, weight: .bold))
+            .foregroundStyle(DevineTheme.Colors.textMuted)
+            .textCase(.uppercase)
+            .tracking(0.5)
+    }
+
+    // MARK: - Photo Logic
 
     @MainActor
     private func requestPhotosAndPresentPicker() async {
@@ -276,6 +405,7 @@ struct MirrorCheckinSheet: View {
     }
 
     private func saveCheckin() {
+        DevineHaptic.actionComplete.fire()
         let shouldOpenTimeline = selectedAssetLocalIdentifier != nil
         model.recordMirrorCheckin(
             tags: Array(selectedTags),

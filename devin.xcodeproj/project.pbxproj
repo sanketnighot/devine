@@ -6,11 +6,62 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		451482442F4B91F500B8F583 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 451482432F4B91F500B8F583 /* WidgetKit.framework */; };
+		451482462F4B91F500B8F583 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 451482452F4B91F500B8F583 /* SwiftUI.framework */; };
+		451482532F4B91F800B8F583 /* devineExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 451482412F4B91F500B8F583 /* devineExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		451482512F4B91F800B8F583 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 45B6EB302F431A6F00FD654F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 451482402F4B91F500B8F583;
+			remoteInfo = devineExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		451482582F4B91F800B8F583 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				451482532F4B91F800B8F583 /* devineExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		451482412F4B91F500B8F583 /* devineExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = devineExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		451482432F4B91F500B8F583 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = /System/Library/Frameworks/WidgetKit.framework; sourceTree = "<absolute>"; };
+		451482452F4B91F500B8F583 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = /System/Library/Frameworks/SwiftUI.framework; sourceTree = "<absolute>"; };
 		45B6EB382F431A6F00FD654F /* devin.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = devin.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		451482542F4B91F800B8F583 /* Exceptions for "devine" folder in "devineExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 451482402F4B91F500B8F583 /* devineExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		451482472F4B91F500B8F583 /* devine */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				451482542F4B91F800B8F583 /* Exceptions for "devine" folder in "devineExtension" target */,
+			);
+			path = devine;
+			sourceTree = "<group>";
+		};
 		45B6EB3A2F431A6F00FD654F /* devin */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = devin;
@@ -19,6 +70,15 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		4514823E2F4B91F500B8F583 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				451482462F4B91F500B8F583 /* SwiftUI.framework in Frameworks */,
+				451482442F4B91F500B8F583 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		45B6EB352F431A6F00FD654F /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -29,10 +89,21 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		451482422F4B91F500B8F583 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				451482432F4B91F500B8F583 /* WidgetKit.framework */,
+				451482452F4B91F500B8F583 /* SwiftUI.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		45B6EB2F2F431A6F00FD654F = {
 			isa = PBXGroup;
 			children = (
 				45B6EB3A2F431A6F00FD654F /* devin */,
+				451482472F4B91F500B8F583 /* devine */,
+				451482422F4B91F500B8F583 /* Frameworks */,
 				45B6EB392F431A6F00FD654F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +112,7 @@
 			isa = PBXGroup;
 			children = (
 				45B6EB382F431A6F00FD654F /* devin.app */,
+				451482412F4B91F500B8F583 /* devineExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -48,6 +120,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		451482402F4B91F500B8F583 /* devineExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 451482552F4B91F800B8F583 /* Build configuration list for PBXNativeTarget "devineExtension" */;
+			buildPhases = (
+				4514823D2F4B91F500B8F583 /* Sources */,
+				4514823E2F4B91F500B8F583 /* Frameworks */,
+				4514823F2F4B91F500B8F583 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				451482472F4B91F500B8F583 /* devine */,
+			);
+			name = devineExtension;
+			packageProductDependencies = (
+			);
+			productName = devineExtension;
+			productReference = 451482412F4B91F500B8F583 /* devineExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		45B6EB372F431A6F00FD654F /* devin */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 45B6EB432F431A7100FD654F /* Build configuration list for PBXNativeTarget "devin" */;
@@ -55,10 +149,12 @@
 				45B6EB342F431A6F00FD654F /* Sources */,
 				45B6EB352F431A6F00FD654F /* Frameworks */,
 				45B6EB362F431A6F00FD654F /* Resources */,
+				451482582F4B91F800B8F583 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				451482522F4B91F800B8F583 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				45B6EB3A2F431A6F00FD654F /* devin */,
@@ -80,6 +176,9 @@
 				LastSwiftUpdateCheck = 2620;
 				LastUpgradeCheck = 2620;
 				TargetAttributes = {
+					451482402F4B91F500B8F583 = {
+						CreatedOnToolsVersion = 26.2;
+					};
 					45B6EB372F431A6F00FD654F = {
 						CreatedOnToolsVersion = 26.2;
 					};
@@ -100,11 +199,19 @@
 			projectRoot = "";
 			targets = (
 				45B6EB372F431A6F00FD654F /* devin */,
+				451482402F4B91F500B8F583 /* devineExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		4514823F2F4B91F500B8F583 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		45B6EB362F431A6F00FD654F /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -115,6 +222,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		4514823D2F4B91F500B8F583 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		45B6EB342F431A6F00FD654F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -124,7 +238,99 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		451482522F4B91F800B8F583 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 451482402F4B91F500B8F583 /* devineExtension */;
+			targetProxy = 451482512F4B91F800B8F583 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		451482562F4B91F800B8F583 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5N8AAN567P;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = devine/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = devine;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sanket.devin.devine;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				XROS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Debug;
+		};
+		451482572F4B91F800B8F583 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5N8AAN567P;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = devine/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = devine;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sanket.devin.devine;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				XROS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Release;
+		};
 		45B6EB412F431A7100FD654F /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -262,6 +468,7 @@
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Allow photo access so you can choose check-in images and view your progress timeline.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_BackgroundColor = LaunchBackground;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -298,6 +505,7 @@
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Allow photo access so you can choose check-in images and view your progress timeline.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_BackgroundColor = LaunchBackground;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -321,6 +529,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		451482552F4B91F800B8F583 /* Build configuration list for PBXNativeTarget "devineExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				451482562F4B91F800B8F583 /* Debug */,
+				451482572F4B91F800B8F583 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		45B6EB332F431A6F00FD654F /* Build configuration list for PBXProject "devin" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

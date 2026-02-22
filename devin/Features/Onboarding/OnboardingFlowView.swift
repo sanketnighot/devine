@@ -20,169 +20,400 @@ struct OnboardingFlowView: View {
     @State private var didProvidePhotoEvidence = false
 
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: DevineTheme.Spacing.xxl) {
             header
             content
+            Spacer()
             controls
         }
-        .padding(24)
+        .padding(DevineTheme.Spacing.xxl)
         .frame(maxWidth: 580)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
             LinearGradient(
-                colors: [DevineTheme.Colors.bgPrimary, DevineTheme.Colors.bgSecondary],
-                startPoint: .top,
-                endPoint: .bottom
+                colors: gradientForStep,
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
             )
+            .ignoresSafeArea()
+            .animation(DevineTheme.Motion.standard, value: step)
         )
         .foregroundStyle(DevineTheme.Colors.textPrimary)
     }
 
+    private var gradientForStep: [Color] {
+        switch step {
+        case .welcome:
+            DevineTheme.Gradients.screenBackground
+        case .goal:
+            [DevineTheme.Colors.bgPrimary, DevineTheme.Colors.blush.opacity(0.3)]
+        case .photo:
+            [DevineTheme.Colors.bgPrimary, DevineTheme.Colors.peach.opacity(0.3)]
+        case .preview:
+            [DevineTheme.Colors.bgPrimary, DevineTheme.Colors.bgSecondary]
+        }
+    }
+
+    // MARK: - Header
+
     private var header: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if step != .welcome {
-                Button("Back") {
-                    if let previous = OnboardingStep(rawValue: step.rawValue - 1) {
-                        step = previous
+        VStack(alignment: .leading, spacing: DevineTheme.Spacing.md) {
+            HStack {
+                if step != .welcome {
+                    Button {
+                        DevineHaptic.tap.fire()
+                        withAnimation(DevineTheme.Motion.standard) {
+                            if let previous = OnboardingStep(rawValue: step.rawValue - 1) {
+                                step = previous
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: DevineTheme.Spacing.xs) {
+                            Image(systemName: "chevron.left")
+                                .font(.caption.weight(.bold))
+                            Text("Back")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        .foregroundStyle(DevineTheme.Colors.textSecondary)
                     }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-                .font(.subheadline.weight(.semibold))
+
+                Spacer()
+
+                Text("devine")
+                    .font(.system(.headline, design: .rounded, weight: .bold))
+                    .foregroundStyle(DevineTheme.Colors.ctaPrimary)
             }
 
-            Text("devine")
-                .font(.title.bold())
+            // Progress bar
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule(style: .continuous)
+                        .fill(DevineTheme.Colors.ringTrack)
 
-            ProgressView(value: Double(step.rawValue + 1), total: Double(OnboardingStep.allCases.count))
-                .tint(DevineTheme.Colors.ringProgress)
+                    Capsule(style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: DevineTheme.Gradients.primaryCTA,
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: geo.size.width * progressFraction)
+                        .animation(DevineTheme.Motion.expressive, value: step)
+                }
+            }
+            .frame(height: 4)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+
+    private var progressFraction: CGFloat {
+        CGFloat(step.rawValue + 1) / CGFloat(OnboardingStep.allCases.count)
+    }
+
+    // MARK: - Content
 
     @ViewBuilder
     private var content: some View {
         switch step {
         case .welcome:
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Glow up, but make it real.")
-                    .font(.largeTitle.bold())
-                Text("You will get a plan that evolves with you through small, sustainable daily actions.")
-                    .font(.body)
-                    .foregroundStyle(DevineTheme.Colors.textSecondary)
-                labelRow(text: "Photo is optional.")
-                labelRow(text: "Private by default.")
-                labelRow(text: "No public rankings.")
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
+            welcomeContent
         case .goal:
-            VStack(alignment: .leading, spacing: 14) {
-                Text("What do you want to upgrade first?")
-                    .font(.title2.bold())
-
-                ForEach(GlowGoal.allCases) { goal in
-                    Button {
-                        selectedGoal = goal
-                    } label: {
-                        HStack {
-                            Text(goal.displayName)
-                                .font(.headline)
-                            Spacer()
-                            if selectedGoal == goal {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(DevineTheme.Colors.successAccent)
-                            }
-                        }
-                        .padding()
-                        .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(selectedGoal == goal ? DevineTheme.Colors.ctaPrimary.opacity(0.16) : DevineTheme.Colors.surfaceCard)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
+            goalContent
         case .photo:
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Optional check-in photo")
-                    .font(.title2.bold())
-                Text("A private photo can unlock a verified Glow Score. You can skip and add this later.")
-                    .font(.body)
-                    .foregroundStyle(DevineTheme.Colors.textSecondary)
-                Button("Add quick check-in now") {
-                    didProvidePhotoEvidence = true
-                    step = .preview
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .tint(DevineTheme.Colors.ctaPrimary)
-
-                Button("Skip for now") {
-                    didProvidePhotoEvidence = false
-                    step = .preview
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-                .tint(DevineTheme.Colors.ctaSecondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
+            photoContent
         case .preview:
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Your plan preview")
-                    .font(.title2.bold())
-                if didProvidePhotoEvidence {
-                    scorePreviewCard
-                } else {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("No numeric score yet")
-                            .font(.headline)
-                        Text("Your first plan is ready. Add a mirror check-in to unlock a verified Glow Score.")
-                            .font(.body)
-                            .foregroundStyle(DevineTheme.Colors.textSecondary)
-                    }
-                    .padding()
-                    .background(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(DevineTheme.Colors.surfaceCard)
-                    )
-                }
-
-                Text("Next step: choose your subscription to unlock your full plan and daily action loop.")
-                    .foregroundStyle(DevineTheme.Colors.textSecondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            previewContent
         }
     }
 
+    // MARK: Welcome
+
+    private var welcomeContent: some View {
+        VStack(alignment: .leading, spacing: DevineTheme.Spacing.xl) {
+            VStack(alignment: .leading, spacing: DevineTheme.Spacing.md) {
+                Text("Glow up,\nbut make it real.")
+                    .font(.largeTitle.bold())
+                    .lineSpacing(2)
+
+                Text("A plan that evolves with you through small, sustainable daily actions.")
+                    .font(.body)
+                    .foregroundStyle(DevineTheme.Colors.textSecondary)
+                    .lineSpacing(3)
+            }
+
+            VStack(alignment: .leading, spacing: DevineTheme.Spacing.md) {
+                promiseRow(icon: "camera.viewfinder", text: "Photo is optional")
+                promiseRow(icon: "lock.shield", text: "Private by default")
+                promiseRow(icon: "eye.slash", text: "No public rankings")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func promiseRow(icon: String, text: String) -> some View {
+        HStack(spacing: DevineTheme.Spacing.md) {
+            Image(systemName: icon)
+                .font(.body.weight(.medium))
+                .foregroundStyle(DevineTheme.Colors.successAccent)
+                .frame(width: 24)
+
+            Text(text)
+                .font(.subheadline.weight(.medium))
+        }
+    }
+
+    // MARK: Goal
+
+    private var goalContent: some View {
+        VStack(alignment: .leading, spacing: DevineTheme.Spacing.lg) {
+            Text("What do you want\nto upgrade first?")
+                .font(.title2.bold())
+                .lineSpacing(2)
+
+            VStack(spacing: DevineTheme.Spacing.sm) {
+                ForEach(GlowGoal.allCases) { goal in
+                    goalCard(goal)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func goalCard(_ goal: GlowGoal) -> some View {
+        let isSelected = selectedGoal == goal
+
+        return Button {
+            DevineHaptic.tap.fire()
+            withAnimation(DevineTheme.Motion.quick) {
+                selectedGoal = goal
+            }
+        } label: {
+            HStack(spacing: DevineTheme.Spacing.md) {
+                Image(systemName: goal.iconName)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(isSelected ? goal.accentColor : DevineTheme.Colors.textMuted)
+                    .frame(width: 28)
+
+                Text(goal.displayName)
+                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                    .foregroundStyle(DevineTheme.Colors.textPrimary)
+
+                Spacer()
+
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.body)
+                        .foregroundStyle(goal.accentColor)
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .padding(DevineTheme.Spacing.lg)
+            .background(
+                RoundedRectangle(cornerRadius: DevineTheme.Radius.lg, style: .continuous)
+                    .fill(isSelected ? goal.accentColor.opacity(0.1) : DevineTheme.Colors.surfaceCard)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DevineTheme.Radius.lg, style: .continuous)
+                    .stroke(isSelected ? goal.accentColor.opacity(0.4) : Color.clear, lineWidth: 1.5)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: Photo
+
+    private var photoContent: some View {
+        VStack(alignment: .leading, spacing: DevineTheme.Spacing.xl) {
+            VStack(alignment: .leading, spacing: DevineTheme.Spacing.md) {
+                Text("Optional check-in photo")
+                    .font(.title2.bold())
+
+                Text("A private photo can unlock a verified Glow Score. You can always add this later.")
+                    .font(.body)
+                    .foregroundStyle(DevineTheme.Colors.textSecondary)
+                    .lineSpacing(3)
+            }
+
+            // Photo illustration
+            SurfaceCard {
+                VStack(spacing: DevineTheme.Spacing.lg) {
+                    ZStack {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        DevineTheme.Colors.ctaPrimary.opacity(0.1),
+                                        DevineTheme.Colors.ctaSecondary.opacity(0.08)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 72, height: 72)
+
+                        Image(systemName: "camera.viewfinder")
+                            .font(.system(size: 28))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: DevineTheme.Gradients.primaryCTA,
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    }
+
+                    Text("Stored only on your device")
+                        .font(.caption)
+                        .foregroundStyle(DevineTheme.Colors.textMuted)
+                }
+                .frame(maxWidth: .infinity)
+            }
+
+            VStack(spacing: DevineTheme.Spacing.md) {
+                gradientButton(label: "Add quick check-in now") {
+                    DevineHaptic.tap.fire()
+                    didProvidePhotoEvidence = true
+                    withAnimation(DevineTheme.Motion.standard) {
+                        step = .preview
+                    }
+                }
+
+                Button {
+                    DevineHaptic.tap.fire()
+                    didProvidePhotoEvidence = false
+                    withAnimation(DevineTheme.Motion.standard) {
+                        step = .preview
+                    }
+                } label: {
+                    Text("Skip for now")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(DevineTheme.Colors.textSecondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: Preview
+
+    private var previewContent: some View {
+        VStack(alignment: .leading, spacing: DevineTheme.Spacing.xl) {
+            Text("Your plan is ready")
+                .font(.title2.bold())
+
+            if didProvidePhotoEvidence {
+                SurfaceCard {
+                    HStack(spacing: DevineTheme.Spacing.lg) {
+                        ZStack {
+                            Circle()
+                                .fill(DevineTheme.Colors.successAccent.opacity(0.12))
+                                .frame(width: 52, height: 52)
+
+                            Image(systemName: "checkmark.shield.fill")
+                                .font(.title3.weight(.bold))
+                                .foregroundStyle(DevineTheme.Colors.successAccent)
+                        }
+
+                        VStack(alignment: .leading, spacing: DevineTheme.Spacing.xs) {
+                            Text("Evidence received")
+                                .font(.system(.subheadline, design: .rounded, weight: .bold))
+
+                            Text("Your Glow Score will appear after the first analysis. No fake numbers.")
+                                .font(.caption)
+                                .foregroundStyle(DevineTheme.Colors.textSecondary)
+                                .lineSpacing(2)
+                        }
+
+                        Spacer()
+                    }
+                }
+            } else {
+                GradientCard(colors: DevineTheme.Gradients.heroCard, showGlow: true) {
+                    VStack(alignment: .leading, spacing: DevineTheme.Spacing.md) {
+                        HStack(spacing: DevineTheme.Spacing.md) {
+                            ProgressRing(
+                                value: 0,
+                                maxValue: 100,
+                                size: 48,
+                                lineWidth: 6,
+                                trackColor: Color.white.opacity(0.2),
+                                showLabel: false,
+                                showGlow: false
+                            )
+
+                            VStack(alignment: .leading, spacing: DevineTheme.Spacing.xs) {
+                                Text("No score yet")
+                                    .font(.system(.subheadline, design: .rounded, weight: .bold))
+                                    .foregroundStyle(DevineTheme.Colors.textOnGradient)
+
+                                Text("Add a mirror check-in anytime to unlock your verified Glow Score.")
+                                    .font(.caption)
+                                    .foregroundStyle(DevineTheme.Colors.textOnGradient.opacity(0.8))
+                                    .lineSpacing(2)
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let goal = selectedGoal {
+                SurfaceCard {
+                    HStack(spacing: DevineTheme.Spacing.md) {
+                        GoalBadge(goal: goal)
+
+                        VStack(alignment: .leading, spacing: DevineTheme.Spacing.xs) {
+                            Text("3 daily actions")
+                                .font(.system(.subheadline, design: .rounded, weight: .bold))
+
+                            Text("Small, sustainable steps adapted to your goal.")
+                                .font(.caption)
+                                .foregroundStyle(DevineTheme.Colors.textSecondary)
+                        }
+
+                        Spacer()
+                    }
+                }
+            }
+
+            Text("Next: choose your plan to unlock the full adaptive experience.")
+                .font(.caption)
+                .foregroundStyle(DevineTheme.Colors.textMuted)
+                .lineSpacing(2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Controls
+
     private var controls: some View {
-        HStack {
-            Spacer()
+        Group {
             switch step {
             case .welcome:
-                Button("Start") {
-                    step = .goal
+                gradientButton(label: "Start your glow up") {
+                    DevineHaptic.tap.fire()
+                    withAnimation(DevineTheme.Motion.standard) {
+                        step = .goal
+                    }
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .tint(DevineTheme.Colors.ctaPrimary)
 
             case .goal:
-                Button("Continue") {
-                    step = .photo
+                gradientButton(label: "Continue", disabled: selectedGoal == nil) {
+                    DevineHaptic.tap.fire()
+                    withAnimation(DevineTheme.Motion.standard) {
+                        step = .photo
+                    }
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(selectedGoal == nil)
-                .tint(DevineTheme.Colors.ctaPrimary)
 
             case .photo:
                 EmptyView()
 
             case .preview:
-                Button("Continue to subscription") {
+                gradientButton(label: "Let's go") {
+                    DevineHaptic.tap.fire()
                     onComplete(
                         OnboardingResult(
                             goal: selectedGoal ?? .faceDefinition,
@@ -190,48 +421,33 @@ struct OnboardingFlowView: View {
                         )
                     )
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .tint(DevineTheme.Colors.ctaPrimary)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .trailing)
     }
 
-    private var scorePreviewCard: some View {
-        HStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(DevineTheme.Colors.bgSecondary)
-                    .frame(width: 56, height: 56)
+    // MARK: - Gradient Button Helper
 
-                Image(systemName: "checkmark.shield.fill")
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(DevineTheme.Colors.successAccent)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Evidence received")
-                    .font(.headline)
-                Text("Your full score will appear after the first mirror analysis. No fake numbers.")
-                    .foregroundStyle(DevineTheme.Colors.textSecondary)
-                    .font(.subheadline)
-            }
-            Spacer()
+    private func gradientButton(label: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.headline)
+                .foregroundStyle(DevineTheme.Colors.textOnGradient)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, DevineTheme.Spacing.lg)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: DevineTheme.Gradients.primaryCTA,
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                )
+                .shadow(color: DevineTheme.Gradients.primaryCTA.first?.opacity(0.3) ?? .clear, radius: 12, y: 4)
         }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(DevineTheme.Colors.surfaceCard)
-        )
-    }
-
-    private func labelRow(text: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(DevineTheme.Colors.successAccent)
-            Text(text)
-                .font(.subheadline.weight(.medium))
-        }
+        .buttonStyle(.plain)
+        .opacity(disabled ? 0.4 : 1)
+        .disabled(disabled)
     }
 }

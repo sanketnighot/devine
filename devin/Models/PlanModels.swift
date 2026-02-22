@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 struct EvidenceEvent: Identifiable {
     let id = UUID()
@@ -19,4 +20,14 @@ enum PlanAdjustmentSeverity: String {
     case minorTweak = "minor_tweak"
     case resequence = "resequence"
     case pivot = "pivot"
+}
+
+struct SubscoreEntry: Identifiable {
+    let id: String
+    let label: String
+    let icon: String
+    let value: Int
+    let maxValue: Int
+    let accentColor: Color
+    let insight: String
 }

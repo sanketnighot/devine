@@ -209,4 +209,60 @@ final class DevineAppModel: ObservableObject {
     private static func dayKey(for date: Date) -> String {
         date.formatted(.iso8601.year().month().day())
     }
+
+    // MARK: - Subscores
+
+    var subscores: [SubscoreEntry] {
+        guard let score = glowScore else { return [] }
+
+        let categories: [(id: String, label: String, icon: String, goal: GlowGoal, offset: Int, insight: String)] = [
+            ("skin", "Skin", "sparkles", .skinGlow, 3,
+             "Hydration and sleep are your biggest levers here."),
+            ("face", "Face", "face.smiling", .faceDefinition, -2,
+             "Facial exercises and mewing consistency matter."),
+            ("body", "Body", "figure.stand", .bodySilhouette, -5,
+             "Movement habits are building your silhouette."),
+            ("hair", "Hair & Style", "comb", .hairStyle, 1,
+             "Routine consistency keeps your style on point."),
+            ("energy", "Energy", "bolt.fill", .energyFitness, 4,
+             "Sleep quality is your secret energy weapon."),
+            ("confidence", "Confidence", "star.fill", .confidenceConsistency, -1,
+             "Showing up daily is the real confidence hack."),
+        ]
+
+        return categories.map { cat in
+            let raw = score + cat.offset
+            let clamped = max(0, min(100, raw))
+            return SubscoreEntry(
+                id: cat.id,
+                label: cat.label,
+                icon: cat.icon,
+                value: clamped,
+                maxValue: 100,
+                accentColor: cat.goal.accentColor,
+                insight: cat.insight
+            )
+        }
+    }
+
+    // MARK: - Weekly Stats
+
+    var thisWeekCheckinCount: Int {
+        let calendar = Calendar.current
+        let weekStart = calendar.dateInterval(of: .weekOfYear, for: .now)?.start ?? .now
+        return mirrorCheckins.filter { $0.createdAt >= weekStart }.count
+    }
+
+    var thisWeekMoodTags: [String: Int] {
+        let calendar = Calendar.current
+        let weekStart = calendar.dateInterval(of: .weekOfYear, for: .now)?.start ?? .now
+        let weekCheckins = mirrorCheckins.filter { $0.createdAt >= weekStart }
+        var freq: [String: Int] = [:]
+        for entry in weekCheckins {
+            for tag in entry.tags {
+                freq[tag, default: 0] += 1
+            }
+        }
+        return freq
+    }
 }
