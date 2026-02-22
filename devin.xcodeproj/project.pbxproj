@@ -257,6 +257,9 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Devine;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Allow camera access to capture optional mirror check-in photos.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Allow saving mirror check-in photos to your private devine Check-ins album.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Allow photo access so you can choose check-in images and view your progress timeline.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -290,6 +293,9 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Devine;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Allow camera access to capture optional mirror check-in photos.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Allow saving mirror check-in photos to your private devine Check-ins album.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Allow photo access so you can choose check-in images and view your progress timeline.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

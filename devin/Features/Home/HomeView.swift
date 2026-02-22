@@ -7,6 +7,7 @@ struct HomeView: View {
 
     @State private var selectedAction: PerfectAction?
     @State private var showingMirrorCheckin = false
+    @State private var showingMirrorTimeline = false
 
     var body: some View {
         NavigationStack {
@@ -20,6 +21,7 @@ struct HomeView: View {
                     primaryActionCard
                     actionsSection
                     streakSection
+                    timelineSection
                 }
                 .padding(16)
             }
@@ -42,8 +44,16 @@ struct HomeView: View {
                 .presentationBackground(DevineTheme.Colors.bgPrimary)
             }
             .sheet(isPresented: $showingMirrorCheckin) {
-                MirrorCheckinSheet(model: model)
+                MirrorCheckinSheet(
+                    model: model,
+                    onOpenTimeline: {
+                        showingMirrorTimeline = true
+                    }
+                )
                     .presentationBackground(DevineTheme.Colors.bgPrimary)
+            }
+            .navigationDestination(isPresented: $showingMirrorTimeline) {
+                MirrorTimelineView(model: model)
             }
             .onAppear {
                 model.rollOverIfNeeded()
@@ -191,6 +201,35 @@ struct HomeView: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(DevineTheme.Colors.surfaceCard)
         )
+    }
+
+    private var timelineSection: some View {
+        Button {
+            showingMirrorTimeline = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "photo.on.rectangle.angled")
+                    .font(.title3)
+                    .foregroundStyle(DevineTheme.Colors.ctaPrimary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Progress timeline")
+                        .font(.subheadline.weight(.semibold))
+                    Text("View mirror photos from latest to oldest")
+                        .font(.caption)
+                        .foregroundStyle(DevineTheme.Colors.textSecondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DevineTheme.Colors.textMuted)
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(DevineTheme.Colors.surfaceCard)
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 

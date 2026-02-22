@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import Photos
 
 final class DevineAppModel: ObservableObject {
     @Published private(set) var primaryGoal: GlowGoal = .faceDefinition
@@ -12,9 +13,16 @@ final class DevineAppModel: ObservableObject {
     @Published private(set) var goalTrajectory: GoalTrajectory?
     @Published private(set) var lastUpdatedAt: Date = .now
     @Published private(set) var latestAdjustmentSeverity: PlanAdjustmentSeverity = .minorTweak
+    @Published private(set) var mirrorCheckins: [MirrorCheckinEntry] = []
+    @Published private(set) var mirrorTimelineState: MirrorTimelineState = .idle
 
     private var currentDayKey = DevineAppModel.dayKey(for: .now)
     private var streakCreditedDayKey: String?
+    private let mirrorMetadataStore = MirrorCheckinMetadataStore()
+
+    init() {
+        loadMirrorTimeline()
+    }
 
     func configure(goal: GlowGoal, hasInitialEvidence: Bool) {
         primaryGoal = goal
@@ -26,6 +34,9 @@ final class DevineAppModel: ObservableObject {
         evidenceLedger.removeAll()
         latestAdjustmentSeverity = .minorTweak
         lastUpdatedAt = .now
+        mirrorCheckins.removeAll()
+        persistMirrorCheckins()
+        syncMirrorTimelineState()
 
         if hasInitialEvidence {
             recordMirrorCheckin(tags: ["onboarding_photo"], note: "Initial private check-in")
@@ -64,6 +75,70 @@ final class DevineAppModel: ObservableObject {
     }
 
     func recordMirrorCheckin(tags: [String], note: String) {
+        applyMirrorCheckinScoring(tags: tags, note: note)
+    }
+
+    func recordMirrorCheckin(
+        tags: [String],
+        note: String,
+        assetLocalIdentifier: String?,
+        source: MirrorPhotoSource?,
+        photoCapturedAt: Date? = nil
+    ) {
+        var augmentedTags = tags
+        if assetLocalIdentifier != nil {
+            augmentedTags.append("photo_evidence")
+        }
+        applyMirrorCheckinScoring(tags: augmentedTags, note: note)
+
+        guard let assetLocalIdentifier, let source else {
+            return
+        }
+
+        let entry = MirrorCheckinEntry(
+            createdAt: photoCapturedAt ?? .now,
+            tags: tags,
+            note: note,
+            assetLocalIdentifier: assetLocalIdentifier,
+            source: source
+        )
+        mirrorCheckins.insert(entry, at: 0)
+        mirrorCheckins.sort { $0.createdAt > $1.createdAt }
+        persistMirrorCheckins()
+        syncMirrorTimelineState()
+    }
+
+    func loadMirrorTimeline() {
+        mirrorTimelineState = .loading
+        do {
+            mirrorCheckins = try mirrorMetadataStore.loadEntries()
+            syncMirrorTimelineState()
+        } catch {
+            mirrorCheckins = []
+            mirrorTimelineState = .error(message: "Couldn’t load your timeline.")
+        }
+    }
+
+    func setMirrorTimelineAuthorization(status: PHAuthorizationStatus) {
+        switch status {
+        case .authorized, .limited:
+            syncMirrorTimelineState()
+        case .denied, .restricted:
+            mirrorTimelineState = .permissionBlocked
+        case .notDetermined:
+            mirrorTimelineState = .loading
+        @unknown default:
+            mirrorTimelineState = .error(message: "Photo permission state is unavailable.")
+        }
+    }
+
+    func removeMirrorCheckin(entryID: UUID) {
+        mirrorCheckins.removeAll { $0.id == entryID }
+        persistMirrorCheckins()
+        syncMirrorTimelineState()
+    }
+
+    private func applyMirrorCheckinScoring(tags: [String], note: String) {
         rollOverIfNeeded()
 
         let existingScore = glowScore ?? 66
@@ -95,6 +170,21 @@ final class DevineAppModel: ObservableObject {
             ),
             at: 0
         )
+    }
+
+    private func persistMirrorCheckins() {
+        do {
+            try mirrorMetadataStore.saveEntries(mirrorCheckins)
+        } catch {
+            mirrorTimelineState = .error(message: "Couldn’t save your timeline.")
+        }
+    }
+
+    private func syncMirrorTimelineState() {
+        if case .permissionBlocked = mirrorTimelineState {
+            return
+        }
+        mirrorTimelineState = mirrorCheckins.isEmpty ? .empty : .ready
     }
 
     private func evaluatePlanAdjustment() {
