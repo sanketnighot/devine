@@ -13,7 +13,7 @@ enum GeminiError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notConfigured:
-            return "Gemini API key not set. Add GEMINI_API_KEY to your Xcode scheme environment variables."
+            return GeminiConfig.missingKeyMessage
         case .networkError(let e):
             return "Network error: \(e.localizedDescription)"
         case .httpError(let code):

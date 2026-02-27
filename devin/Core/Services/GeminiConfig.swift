@@ -2,21 +2,13 @@ import Foundation
 
 /// Gemini API configuration.
 ///
-/// The API key is resolved in order:
-/// 1. Xcode scheme environment variable `GEMINI_API_KEY` (for local dev)
-/// 2. Compile-time fallback constant (works on-device without Xcode)
+/// The API key is resolved from the Xcode scheme environment variable `GEMINI_API_KEY`.
+/// Set it in: Product → Scheme → Edit Scheme → Run → Arguments → Environment Variables.
 ///
-/// To rotate the key, update either source.
+/// Never hardcode API keys in source code.
 enum GeminiConfig {
-    // MARK: - Compile-time fallback key
-    // This ensures the key works when the app is launched outside of Xcode
-    // (e.g. directly from the device home screen).
-    private static let fallbackAPIKey = "AIzaSyD0ICBULAbI5ST1BUjgbFhI_LPRKS-w_Gs"
-
     static var apiKey: String {
-        let envKey = ProcessInfo.processInfo.environment["GEMINI_API_KEY"] ?? ""
-        let key = envKey.isEmpty ? fallbackAPIKey : envKey
-        return key
+        ProcessInfo.processInfo.environment["GEMINI_API_KEY"] ?? ""
     }
 
     /// Model used for plan generation (vision-capable, fast)
@@ -25,4 +17,6 @@ enum GeminiConfig {
     static let baseURL = "https://generativelanguage.googleapis.com/v1beta"
 
     static var isConfigured: Bool { !apiKey.isEmpty }
+
+    static let missingKeyMessage = "Gemini API key not configured. Go to Xcode → Product → Scheme → Edit Scheme → Run → Environment Variables and add GEMINI_API_KEY."
 }
