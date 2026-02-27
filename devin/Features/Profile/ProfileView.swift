@@ -260,7 +260,7 @@ struct ProfileView: View {
             SurfaceCard(padding: DevineTheme.Spacing.xs) {
                 VStack(spacing: 0) {
                     NavigationLink {
-                        SettingsView()
+                        SettingsView(model: model)
                     } label: {
                         HStack(spacing: DevineTheme.Spacing.md) {
                             Image(systemName: "gearshape")

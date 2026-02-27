@@ -5,7 +5,6 @@ import UIKit
 
 struct MirrorCheckinSheet: View {
     @ObservedObject var model: DevineAppModel
-    var onOpenTimeline: (() -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var selectedTags: Set<String> = []
@@ -56,6 +55,10 @@ struct MirrorCheckinSheet: View {
                 )
                 .ignoresSafeArea()
             )
+            .scrollDismissesKeyboard(.interactively)
+            .onTapGesture {
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            }
             .foregroundStyle(DevineTheme.Colors.textPrimary)
             .navigationTitle("Mirror check-in")
             .navigationBarTitleDisplayMode(.inline)
@@ -406,7 +409,6 @@ struct MirrorCheckinSheet: View {
 
     private func saveCheckin() {
         DevineHaptic.actionComplete.fire()
-        let shouldOpenTimeline = selectedAssetLocalIdentifier != nil
         model.recordMirrorCheckin(
             tags: Array(selectedTags),
             note: note,
@@ -415,10 +417,5 @@ struct MirrorCheckinSheet: View {
             photoCapturedAt: selectedPhotoCapturedAt
         )
         dismiss()
-        if shouldOpenTimeline {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                onOpenTimeline?()
-            }
-        }
     }
 }

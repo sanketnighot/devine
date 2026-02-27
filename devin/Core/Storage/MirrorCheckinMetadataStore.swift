@@ -40,6 +40,12 @@ final class MirrorCheckinMetadataStore {
         try data.write(to: url, options: .atomic)
     }
 
+    func deleteFile() {
+        guard let url = try? metadataFileURL(),
+              fileManager.fileExists(atPath: url.path) else { return }
+        try? fileManager.removeItem(at: url)
+    }
+
     private func metadataFileURL() throws -> URL {
         let appSupport = try fileManager.url(
             for: .applicationSupportDirectory,

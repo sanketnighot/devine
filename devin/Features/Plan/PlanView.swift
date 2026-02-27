@@ -8,6 +8,7 @@ struct PlanView: View {
     @State private var selectedAction: PerfectAction?
     @State private var showSubscores = false
     @State private var showPlanHistory = false
+    @State private var showFullWeekPlan = false
 
     private var completedCount: Int {
         model.todayActions.filter { model.isActionDone($0) }.count
@@ -51,6 +52,9 @@ struct PlanView: View {
             }
             .navigationDestination(isPresented: $showPlanHistory) {
                 PlanHistoryView(model: model)
+            }
+            .navigationDestination(isPresented: $showFullWeekPlan) {
+                FullWeekPlanView(model: model)
             }
         }
         .tint(DevineTheme.Colors.ctaPrimary)
@@ -312,6 +316,31 @@ struct PlanView: View {
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
+
+                        Divider()
+                            .foregroundStyle(DevineTheme.Colors.borderSubtle)
+
+                        Button {
+                            DevineHaptic.tap.fire()
+                            showFullWeekPlan = true
+                        } label: {
+                            HStack(spacing: DevineTheme.Spacing.sm) {
+                                Image(systemName: "calendar.badge.clock")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(DevineTheme.Colors.ctaPrimary)
+
+                                Text("See full 7-day plan")
+                                    .font(.system(.caption, design: .rounded, weight: .semibold))
+                                    .foregroundStyle(DevineTheme.Colors.ctaPrimary)
+
+                                Spacer()
+
+                                Image(systemName: "chevron.right")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(DevineTheme.Colors.textMuted)
+                            }
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             } else {

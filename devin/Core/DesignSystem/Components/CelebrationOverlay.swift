@@ -75,6 +75,14 @@ struct CelebrationOverlay: View {
                 showMessage = true
             }
         }
+
+        // Auto-dismiss after the longest confetti fall + a brief pause
+        let maxDuration = pieces.map { $0.delay + $0.fallDuration }.max() ?? 2.0
+        DispatchQueue.main.asyncAfter(deadline: .now() + maxDuration + 0.3) {
+            withAnimation(DevineTheme.Motion.standard) {
+                isPresented = false
+            }
+        }
     }
 }
 

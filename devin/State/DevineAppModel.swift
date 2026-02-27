@@ -18,6 +18,7 @@ final class DevineAppModel: ObservableObject {
     @Published private(set) var mirrorCheckins: [MirrorCheckinEntry] = []
     @Published private(set) var mirrorTimelineState: MirrorTimelineState = .idle
     @Published private(set) var aiSubscores: [AISubscore] = []
+    @Published private(set) var checkinEvaluationState: CheckinEvaluationState = .idle
 
     // User Identity
     @Published private(set) var userProfile: UserProfile?
@@ -36,6 +37,17 @@ final class DevineAppModel: ObservableObject {
     private var completedActionsByDay: [String: [UUID]] = [:]
     private let mirrorMetadataStore = MirrorCheckinMetadataStore()
     private let stateStore = DevineStateStore()
+
+    /// Whether the user can perform a post-task mirror check-in (all daily actions completed).
+    var canDoMirrorCheckin: Bool {
+        !todayActions.isEmpty && completedActionIDs.count == todayActions.count
+    }
+
+    /// Whether a mirror check-in has already been recorded today.
+    var hasCheckedInToday: Bool {
+        let cal = Calendar.current
+        return mirrorCheckins.contains { cal.isDateInToday($0.createdAt) }
+    }
 
     /// Public read-only access for PlanView to check per-day completion.
     var completedActionsByDayPublic: [String: [UUID]] { completedActionsByDay }
@@ -105,6 +117,54 @@ final class DevineAppModel: ObservableObject {
         }
     }
 
+    // MARK: - Reset / Delete All Data
+
+    func resetAllData() {
+        // 1. Delete persisted files
+        stateStore.deleteFile()
+        mirrorMetadataStore.deleteFile()
+
+        // 2. Remove all known UserDefaults keys
+        let keys = [
+            "has_completed_onboarding",
+            "has_active_subscription",
+            "paywall_dismissed_once",
+            "debug_unlock_all",
+            "setting_daily_reminder",
+            "setting_streak_alerts",
+            "setting_weekly_recap",
+            "last_recap_week",
+        ]
+        for key in keys {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+
+        // 3. Reset all @Published properties to init defaults
+        primaryGoal = .faceDefinition
+        todayActions = PerfectAction.defaults(for: .faceDefinition)
+        completedActionIDs = []
+        streakDays = 0
+        glowScore = nil
+        confidence = 0
+        evidenceLedger = []
+        goalTrajectory = nil
+        lastUpdatedAt = .now
+        latestAdjustmentSeverity = .minorTweak
+        mirrorCheckins = []
+        mirrorTimelineState = .idle
+        aiSubscores = []
+        userProfile = nil
+        generatedPlan = nil
+        glowCircle = nil
+        planAdjustmentHistory = []
+        checkinEvaluationState = .idle
+
+        // 4. Reset private state
+        currentDayKey = DevineAppModel.dayKey(for: .now)
+        streakCreditedDayKey = nil
+        completedActionsByDay = [:]
+    }
+
     // MARK: - Daily Rollover
 
     func rollOverIfNeeded() {
@@ -161,23 +221,153 @@ final class DevineAppModel: ObservableObject {
         source: MirrorPhotoSource?,
         photoCapturedAt: Date? = nil
     ) {
-        var augmentedTags = tags
-        if assetLocalIdentifier != nil { augmentedTags.append("photo_evidence") }
-        applyMirrorCheckinScoring(tags: augmentedTags, note: note)
+        rollOverIfNeeded()
 
-        guard let assetLocalIdentifier, let source else { return }
+        // Save timeline entry immediately (synchronous, user-visible right away)
+        if let assetLocalIdentifier, let source {
+            let entry = MirrorCheckinEntry(
+                createdAt: photoCapturedAt ?? .now,
+                tags: tags,
+                note: note,
+                assetLocalIdentifier: assetLocalIdentifier,
+                source: source
+            )
+            mirrorCheckins.insert(entry, at: 0)
+            mirrorCheckins.sort { $0.createdAt > $1.createdAt }
+            persistMirrorCheckins()
+            syncMirrorTimelineState()
+        }
 
-        let entry = MirrorCheckinEntry(
-            createdAt: photoCapturedAt ?? .now,
-            tags: tags,
-            note: note,
-            assetLocalIdentifier: assetLocalIdentifier,
-            source: source
+        // Start async AI evaluation
+        checkinEvaluationState = .loading
+        let capturedTags = assetLocalIdentifier != nil ? tags + ["photo_evidence"] : tags
+        let capturedNote = note
+        let capturedIdentifier = assetLocalIdentifier
+
+        Task { @MainActor in
+            do {
+                // Load photo if available
+                var photo: UIImage? = nil
+                if let identifier = capturedIdentifier {
+                    photo = await withCheckedContinuation { continuation in
+                        var hasResumed = false
+                        MirrorPhotoLibraryService.shared.requestImage(
+                            localIdentifier: identifier,
+                            targetSize: CGSize(width: 512, height: 512),
+                            contentMode: .aspectFit
+                        ) { image in
+                            guard !hasResumed else { return }
+                            hasResumed = true
+                            continuation.resume(returning: image)
+                        }
+                    }
+                }
+
+                let recentSummaries = evidenceLedger.prefix(5).map { $0.summary }
+
+                let evaluation = try await PlanGenerationService().evaluateCheckin(
+                    currentPlan: generatedPlan,
+                    userProfile: userProfile,
+                    primaryGoal: primaryGoal,
+                    currentGlowScore: glowScore,
+                    currentSubscores: aiSubscores,
+                    completedActionsByDay: completedActionsByDay,
+                    todayActions: todayActions,
+                    completedActionIDs: completedActionIDs,
+                    streakDays: streakDays,
+                    checkinTags: capturedTags,
+                    checkinNote: capturedNote,
+                    recentEvidenceSummary: Array(recentSummaries),
+                    photo: photo
+                )
+
+                checkinEvaluationState = .ready(evaluation)
+            } catch {
+                print("[DevineAppModel] AI check-in eval failed: \(error.localizedDescription). Falling back to hardcoded scoring.")
+                applyMirrorCheckinScoring(tags: capturedTags, note: capturedNote)
+                checkinEvaluationState = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    // MARK: - Check-in Evaluation Accept / Dismiss
+
+    /// Accept AI evaluation: apply scores + subscores + optional plan update.
+    func acceptCheckinEvaluation() {
+        guard case .ready(let evaluation) = checkinEvaluationState else { return }
+
+        glowScore = evaluation.updatedGlowScore
+        aiSubscores = evaluation.updatedSubscores
+        confidence = min(0.92, max(0.36, 0.45 + Double(evidenceLedger.count) * 0.07))
+        goalTrajectory = trajectory(for: evaluation.updatedGlowScore, confidence: confidence)
+        latestAdjustmentSeverity = evaluation.adjustmentSeverity
+        lastUpdatedAt = .now
+
+        // Record evidence event
+        let used = evaluation.updatedSubscores.map { $0.label }
+        evidenceLedger.insert(
+            EvidenceEvent(
+                createdAt: .now,
+                summary: evaluation.feedback,
+                evidenceUsed: used,
+                evidenceMissing: [],
+                scoreAtTime: evaluation.updatedGlowScore
+            ),
+            at: 0
         )
-        mirrorCheckins.insert(entry, at: 0)
-        mirrorCheckins.sort { $0.createdAt > $1.createdAt }
-        persistMirrorCheckins()
-        syncMirrorTimelineState()
+
+        // Apply plan update if present
+        if let planUpdate = evaluation.suggestedPlanUpdate, var plan = generatedPlan {
+            let mergedDays = mergeUpdatedDays(existing: plan.dailyPlans, updated: planUpdate.updatedDailyPlans)
+            plan = GeneratedPlan(
+                id: plan.id,
+                generatedAt: plan.generatedAt,
+                goalRawValue: plan.goalRawValue,
+                dailyPlans: mergedDays,
+                summary: plan.summary,
+                rationale: plan.rationale,
+                initialGlowScore: plan.initialGlowScore,
+                subscores: evaluation.updatedSubscores
+            )
+            generatedPlan = plan
+            loadTodayActionsFromPlan()
+
+            planAdjustmentHistory.append(PlanAdjustmentRecord(
+                createdAt: .now,
+                severity: evaluation.adjustmentSeverity,
+                reason: planUpdate.reason,
+                associatedEvidence: used
+            ))
+        }
+
+        checkinEvaluationState = .idle
+        persistState()
+    }
+
+    /// Dismiss AI evaluation: apply scores only, keep current plan.
+    func dismissCheckinEvaluation() {
+        guard case .ready(let evaluation) = checkinEvaluationState else { return }
+
+        glowScore = evaluation.updatedGlowScore
+        aiSubscores = evaluation.updatedSubscores
+        confidence = min(0.92, max(0.36, 0.45 + Double(evidenceLedger.count) * 0.07))
+        goalTrajectory = trajectory(for: evaluation.updatedGlowScore, confidence: confidence)
+        lastUpdatedAt = .now
+
+        // Record evidence event (score only, no plan change)
+        evidenceLedger.insert(
+            EvidenceEvent(
+                createdAt: .now,
+                summary: evaluation.feedback,
+                evidenceUsed: evaluation.updatedSubscores.map { $0.label },
+                evidenceMissing: [],
+                scoreAtTime: evaluation.updatedGlowScore
+            ),
+            at: 0
+        )
+
+        checkinEvaluationState = .idle
+        persistState()
     }
 
     func loadMirrorTimeline() {
@@ -346,7 +536,7 @@ final class DevineAppModel: ObservableObject {
         let used = tags.isEmpty ? ["manual_checkin"] : tags
         let missing = tags.isEmpty ? ["Apple Health trends", "sleep consistency"] : ["sleep consistency", "7-day check-in history"]
         let summary = note.isEmpty ? "Mirror check-in recorded. Plan tuned for today." : note
-        evidenceLedger.insert(EvidenceEvent(createdAt: .now, summary: summary, evidenceUsed: used, evidenceMissing: missing), at: 0)
+        evidenceLedger.insert(EvidenceEvent(createdAt: .now, summary: summary, evidenceUsed: used, evidenceMissing: missing, scoreAtTime: nextScore), at: 0)
         persistState()
     }
 
@@ -361,6 +551,14 @@ final class DevineAppModel: ObservableObject {
     private func syncMirrorTimelineState() {
         if case .permissionBlocked = mirrorTimelineState { return }
         mirrorTimelineState = mirrorCheckins.isEmpty ? .empty : .ready
+    }
+
+    /// Merge plan days: keep days <= today from existing, replace future days with updated ones.
+    private func mergeUpdatedDays(existing: [DailyPlan], updated: [DailyPlan]) -> [DailyPlan] {
+        let cal = Calendar.current
+        let todayStart = cal.startOfDay(for: .now)
+        let pastAndToday = existing.filter { cal.startOfDay(for: $0.date) <= todayStart }
+        return pastAndToday + updated
     }
 
     private func evaluatePlanAdjustment() {

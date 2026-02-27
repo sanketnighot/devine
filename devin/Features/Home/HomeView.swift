@@ -12,6 +12,8 @@ struct HomeView: View {
     @State private var celebrationMessage = "Tiny win. Keep going."
     @State private var celebratedMilestone: Int?
     @State private var showWeeklyRecap = false
+    @State private var showCheckinReview = false
+    @State private var showDisabledCheckinToast = false
     @AppStorage("last_recap_week") private var lastRecapWeek: Int = 0
 
     private var completedCount: Int {
@@ -23,9 +25,19 @@ struct HomeView: View {
     }
 
     private var scoreTrendData: [Double] {
-        model.evidenceLedger.suffix(10).reversed().map { _ in
-            Double(model.glowScore ?? 0) + Double.random(in: -6 ... 6)
-        }
+        // Use real historical scores from evidence events (oldest → newest)
+        let historical = model.evidenceLedger
+            .reversed()                           // oldest first for left-to-right trend
+            .compactMap { $0.scoreAtTime }
+            .suffix(10)
+            .map { Double($0) }
+
+        // If we have at least 2 real data points, use them
+        if historical.count >= 2 { return Array(historical) }
+
+        // Otherwise show a flat line at the current score (no fake noise)
+        guard let score = model.glowScore else { return [] }
+        return [Double(score)]
     }
 
     var body: some View {
@@ -61,12 +73,20 @@ struct HomeView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        DevineHaptic.tap.fire()
-                        showingMirrorCheckin = true
+                        if model.canDoMirrorCheckin {
+                            DevineHaptic.tap.fire()
+                            showingMirrorCheckin = true
+                        } else {
+                            showDisabledCheckinToast = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                showDisabledCheckinToast = false
+                            }
+                        }
                     } label: {
                         Image(systemName: "camera.viewfinder")
                             .font(.body.weight(.medium))
                             .foregroundStyle(DevineTheme.Colors.ctaPrimary)
+                            .opacity(model.canDoMirrorCheckin ? 1 : 0.4)
                     }
                 }
             }
@@ -79,13 +99,8 @@ struct HomeView: View {
                 .presentationBackground(DevineTheme.Colors.bgPrimary)
             }
             .sheet(isPresented: $showingMirrorCheckin) {
-                MirrorCheckinSheet(
-                    model: model,
-                    onOpenTimeline: {
-                        showingMirrorTimeline = true
-                    }
-                )
-                .presentationBackground(DevineTheme.Colors.bgPrimary)
+                MirrorCheckinSheet(model: model)
+                    .presentationBackground(DevineTheme.Colors.bgPrimary)
             }
             .navigationDestination(isPresented: $showingMirrorTimeline) {
                 MirrorTimelineView(model: model)
@@ -99,6 +114,67 @@ struct HomeView: View {
                     isPresented: $showCelebration,
                     message: celebrationMessage
                 )
+            }
+            .overlay {
+                // Loading overlay while AI evaluates check-in
+                if model.checkinEvaluationState == .loading {
+                    ZStack {
+                        Color.black.opacity(0.4)
+                            .ignoresSafeArea()
+                        VStack(spacing: DevineTheme.Spacing.lg) {
+                            ProgressView()
+                                .controlSize(.large)
+                                .tint(DevineTheme.Colors.ctaPrimary)
+                            Text("Analyzing your check-in...")
+                                .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                                .foregroundStyle(DevineTheme.Colors.textOnGradient)
+                        }
+                        .padding(DevineTheme.Spacing.xl)
+                        .background(
+                            RoundedRectangle(cornerRadius: DevineTheme.Radius.xl, style: .continuous)
+                                .fill(.ultraThinMaterial)
+                        )
+                    }
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: 0.3), value: model.checkinEvaluationState == .loading)
+                }
+            }
+            .overlay(alignment: .top) {
+                // Disabled check-in toast
+                if showDisabledCheckinToast {
+                    Text("Complete all your daily actions first")
+                        .font(.system(.caption, design: .rounded, weight: .semibold))
+                        .foregroundStyle(DevineTheme.Colors.textOnGradient)
+                        .padding(.horizontal, DevineTheme.Spacing.lg)
+                        .padding(.vertical, DevineTheme.Spacing.md)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(DevineTheme.Colors.surfaceCard)
+                                .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
+                        )
+                        .padding(.top, DevineTheme.Spacing.md)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .animation(.spring(response: 0.4), value: showDisabledCheckinToast)
+                }
+            }
+            .sheet(isPresented: $showCheckinReview) {
+                if case .ready(let evaluation) = model.checkinEvaluationState {
+                    CheckinReviewSheet(model: model, evaluation: evaluation)
+                        .presentationBackground(DevineTheme.Colors.bgPrimary)
+                }
+            }
+            .onChange(of: model.checkinEvaluationState) { _, newState in
+                switch newState {
+                case .ready:
+                    showCheckinReview = true
+                case .failed(let message):
+                    // Show brief error toast and auto-dismiss
+                    celebrationMessage = "Score updated (offline mode)"
+                    showCelebration = true
+                    print("[HomeView] AI eval failed, used fallback: \(message)")
+                default:
+                    break
+                }
             }
             .onAppear {
                 model.rollOverIfNeeded()
@@ -180,10 +256,17 @@ struct HomeView: View {
                         }
 
                         Button {
-                            DevineHaptic.tap.fire()
-                            showingMirrorCheckin = true
+                            if model.canDoMirrorCheckin {
+                                DevineHaptic.tap.fire()
+                                showingMirrorCheckin = true
+                            } else {
+                                showDisabledCheckinToast = true
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                    showDisabledCheckinToast = false
+                                }
+                            }
                         } label: {
-                            Text("Start check-in")
+                            Text(model.canDoMirrorCheckin ? "Start check-in" : "Complete tasks first")
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(DevineTheme.Gradients.heroCard.first ?? .pink)
                                 .padding(.horizontal, DevineTheme.Spacing.xl)
@@ -192,6 +275,7 @@ struct HomeView: View {
                                     Capsule(style: .continuous)
                                         .fill(Color.white)
                                 )
+                                .opacity(model.canDoMirrorCheckin ? 1 : 0.5)
                         }
                         .buttonStyle(.plain)
                     }
@@ -267,28 +351,76 @@ struct HomeView: View {
     }
 
     private var allDoneCard: some View {
-        SurfaceCard {
-            HStack(spacing: DevineTheme.Spacing.md) {
-                Image(systemName: "checkmark.seal.fill")
-                    .font(.title)
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: DevineTheme.Gradients.primaryCTA,
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+        Group {
+            if model.hasCheckedInToday {
+                // Already checked in today — simple completion card
+                SurfaceCard {
+                    HStack(spacing: DevineTheme.Spacing.md) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.title)
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: DevineTheme.Gradients.primaryCTA,
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
 
-                VStack(alignment: .leading, spacing: DevineTheme.Spacing.xs) {
-                    Text("All done for today!")
-                        .font(.system(.headline, design: .rounded, weight: .bold))
+                        VStack(alignment: .leading, spacing: DevineTheme.Spacing.xs) {
+                            Text("All done for today!")
+                                .font(.system(.headline, design: .rounded, weight: .bold))
 
-                    Text("Consistency is your glow multiplier")
-                        .font(.caption)
-                        .foregroundStyle(DevineTheme.Colors.textSecondary)
+                            Text("Consistency is your glow multiplier")
+                                .font(.caption)
+                                .foregroundStyle(DevineTheme.Colors.textSecondary)
+                        }
+
+                        Spacer()
+                    }
                 }
+            } else {
+                // Tasks done but no check-in yet — prompt card
+                GradientCard(colors: DevineTheme.Gradients.primaryCTA, showGlow: true) {
+                    VStack(alignment: .leading, spacing: DevineTheme.Spacing.md) {
+                        HStack(spacing: DevineTheme.Spacing.md) {
+                            Image(systemName: "checkmark.seal.fill")
+                                .font(.title)
+                                .foregroundStyle(DevineTheme.Colors.textOnGradient)
 
-                Spacer()
+                            VStack(alignment: .leading, spacing: DevineTheme.Spacing.xs) {
+                                Text("All done! Time for your check-in")
+                                    .font(.system(.headline, design: .rounded, weight: .bold))
+                                    .foregroundStyle(DevineTheme.Colors.textOnGradient)
+
+                                Text("Mirror check-in unlocks your updated score")
+                                    .font(.caption)
+                                    .foregroundStyle(DevineTheme.Colors.textOnGradient.opacity(0.8))
+                            }
+
+                            Spacer()
+                        }
+
+                        Button {
+                            DevineHaptic.tap.fire()
+                            showingMirrorCheckin = true
+                        } label: {
+                            HStack(spacing: DevineTheme.Spacing.sm) {
+                                Image(systemName: "camera.viewfinder")
+                                    .font(.caption.weight(.bold))
+                                Text("Open mirror check-in")
+                                    .font(.subheadline.weight(.bold))
+                            }
+                            .foregroundStyle(DevineTheme.Gradients.primaryCTA.first ?? .pink)
+                            .padding(.horizontal, DevineTheme.Spacing.xl)
+                            .padding(.vertical, DevineTheme.Spacing.md)
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(Color.white)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
         }
     }
@@ -322,6 +454,7 @@ struct HomeView: View {
                         estimatedMinutes: action.estimatedMinutes,
                         isCompleted: model.isActionDone(action)
                     ) {
+                        guard !model.isActionDone(action) else { return }
                         DevineHaptic.tap.fire()
                         selectedAction = action
                     }

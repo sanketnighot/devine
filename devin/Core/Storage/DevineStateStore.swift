@@ -62,6 +62,12 @@ final class DevineStateStore {
         return try decoder.decode(DevinePersistedState.self, from: data)
     }
 
+    func deleteFile() {
+        guard let url = try? stateFileURL(),
+              fileManager.fileExists(atPath: url.path) else { return }
+        try? fileManager.removeItem(at: url)
+    }
+
     // MARK: - Private
 
     private func stateFileURL() throws -> URL {

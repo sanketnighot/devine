@@ -7,13 +7,15 @@ struct EvidenceEvent: Identifiable, Codable {
     let summary: String
     let evidenceUsed: [String]
     let evidenceMissing: [String]
+    let scoreAtTime: Int?
 
-    init(id: UUID = UUID(), createdAt: Date, summary: String, evidenceUsed: [String], evidenceMissing: [String]) {
+    init(id: UUID = UUID(), createdAt: Date, summary: String, evidenceUsed: [String], evidenceMissing: [String], scoreAtTime: Int? = nil) {
         self.id = id
         self.createdAt = createdAt
         self.summary = summary
         self.evidenceUsed = evidenceUsed
         self.evidenceMissing = evidenceMissing
+        self.scoreAtTime = scoreAtTime
     }
 }
 

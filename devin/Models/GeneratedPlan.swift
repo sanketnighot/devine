@@ -141,3 +141,18 @@ struct GeminiSubscore: Codable {
     let value: Int
     let insight: String
 }
+
+// MARK: - Gemini Check-in Evaluation Response
+
+struct GeminiCheckinEvaluationResponse: Codable {
+    let updatedGlowScore: Int
+    let subscores: [GeminiSubscore]
+    let feedback: String
+    let adjustmentSeverity: String          // "minor_tweak", "resequence", or "pivot"
+    let suggestedPlanUpdate: GeminiSuggestedPlanUpdate?
+}
+
+struct GeminiSuggestedPlanUpdate: Codable {
+    let reason: String
+    let dailyPlans: [GeminiDailyPlan]       // Reuses existing type
+}

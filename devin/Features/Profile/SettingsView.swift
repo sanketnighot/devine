@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @ObservedObject var model: DevineAppModel
+
     @AppStorage("setting_daily_reminder") private var dailyReminder = true
     @AppStorage("setting_streak_alerts") private var streakAlerts = true
     @AppStorage("setting_weekly_recap") private var weeklyRecapEnabled = true
@@ -58,6 +60,7 @@ struct SettingsView: View {
             Button("Cancel", role: .cancel) {}
             Button("Yes, delete", role: .destructive) {
                 DevineHaptic.tap.fire()
+                model.resetAllData()
             }
         } message: {
             Text("There is no way to recover your glow history after this.")
