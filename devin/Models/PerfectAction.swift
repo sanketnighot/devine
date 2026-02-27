@@ -1,10 +1,17 @@
 import Foundation
 
 struct PerfectAction: Identifiable, Hashable {
-    let id = UUID()
+    let id: UUID
     let title: String
     let instructions: String
     let estimatedMinutes: Int
+
+    init(id: UUID = UUID(), title: String, instructions: String, estimatedMinutes: Int) {
+        self.id = id
+        self.title = title
+        self.instructions = instructions
+        self.estimatedMinutes = estimatedMinutes
+    }
 
     static func defaults(for goal: GlowGoal) -> [PerfectAction] {
         switch goal {

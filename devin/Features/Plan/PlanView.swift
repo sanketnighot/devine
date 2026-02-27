@@ -20,7 +20,7 @@ struct PlanView: View {
                     planHeader
                     scoreTrajectoryHero
                     subscoreLink
-                    weekSection
+                    weeklyPlanSection
                     todayActionsSection
                     stabilitySection
                     evidenceSection
@@ -63,9 +63,15 @@ struct PlanView: View {
             VStack(alignment: .leading, spacing: DevineTheme.Spacing.xs) {
                 GoalBadge(goal: model.primaryGoal, style: .compact)
 
-                Text("Updated \(model.lastUpdatedAt.formatted(date: .abbreviated, time: .shortened))")
-                    .font(.caption)
-                    .foregroundStyle(DevineTheme.Colors.textMuted)
+                if let plan = model.generatedPlan {
+                    Text("AI plan · \(plan.generatedAt.formatted(date: .abbreviated, time: .omitted))")
+                        .font(.caption)
+                        .foregroundStyle(DevineTheme.Colors.textMuted)
+                } else {
+                    Text("Updated \(model.lastUpdatedAt.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.caption)
+                        .foregroundStyle(DevineTheme.Colors.textMuted)
+                }
             }
 
             Spacer()
@@ -241,15 +247,90 @@ struct PlanView: View {
         }
     }
 
-    // MARK: - This Week
+    // MARK: - Week Progress Strip (compact day dots)
 
-    private var weekSection: some View {
+    private var weeklyPlanSection: some View {
         VStack(alignment: .leading, spacing: DevineTheme.Spacing.md) {
-            Text("This week")
-                .font(.system(.subheadline, design: .rounded, weight: .bold))
+            if let plan = model.generatedPlan, !plan.dailyPlans.isEmpty {
+                Text("This week")
+                    .font(.system(.subheadline, design: .rounded, weight: .bold))
 
-            SurfaceCard(padding: DevineTheme.Spacing.md) {
-                WeekStrip(completedDays: completedWeekdays(), accentColor: model.primaryGoal.accentColor)
+                SurfaceCard(padding: DevineTheme.Spacing.md) {
+                    VStack(spacing: 12) {
+                        // Day dots strip
+                        HStack(spacing: 0) {
+                            ForEach(plan.dailyPlans) { day in
+                                let cal = Calendar.current
+                                let isToday = cal.isDateInToday(day.date)
+                                let isPast = day.date < cal.startOfDay(for: .now)
+                                let dayKey = DevineAppModel.dayKey(for: day.date)
+                                let dayCompletedIDs = Set(model.completedActionsByDayPublic[dayKey] ?? [])
+                                let dayActions = day.actions.map { $0.toPerfectAction() }
+                                let allComplete = dayCompletedIDs.count >= dayActions.count && !dayActions.isEmpty
+
+                                VStack(spacing: 6) {
+                                    Text(day.date.formatted(.dateTime.weekday(.narrow)))
+                                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                                        .foregroundColor(isToday ? model.primaryGoal.accentColor : DevineTheme.Colors.textMuted)
+
+                                    ZStack {
+                                        Circle()
+                                            .fill(isToday
+                                                  ? model.primaryGoal.accentColor
+                                                  : allComplete
+                                                    ? DevineTheme.Colors.successAccent
+                                                    : isPast
+                                                      ? DevineTheme.Colors.textMuted.opacity(0.2)
+                                                      : DevineTheme.Colors.bgSecondary)
+                                            .frame(width: 28, height: 28)
+
+                                        if allComplete {
+                                            Image(systemName: "checkmark")
+                                                .font(.system(size: 10, weight: .bold))
+                                                .foregroundColor(.white)
+                                        } else {
+                                            Text("\(day.dayNumber)")
+                                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                                .foregroundColor(isToday ? .white : DevineTheme.Colors.textSecondary)
+                                        }
+                                    }
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+                        }
+
+                        // Today's theme label
+                        if let todayPlan = model.todayDailyPlan {
+                            HStack(spacing: 6) {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(model.primaryGoal.accentColor)
+
+                                Text("Day \(todayPlan.dayNumber) — \(todayPlan.theme)")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(DevineTheme.Colors.textPrimary)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                }
+            } else {
+                SurfaceCard(padding: DevineTheme.Spacing.md) {
+                    HStack(spacing: DevineTheme.Spacing.md) {
+                        Image(systemName: "calendar.badge.plus")
+                            .font(.title3)
+                            .foregroundStyle(DevineTheme.Colors.textMuted)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("No AI plan yet")
+                                .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                            Text("Complete onboarding to generate your personalized 7-day plan.")
+                                .font(.caption)
+                                .foregroundStyle(DevineTheme.Colors.textSecondary)
+                        }
+                        Spacer()
+                    }
+                }
             }
         }
     }
@@ -259,8 +340,13 @@ struct PlanView: View {
     private var todayActionsSection: some View {
         VStack(alignment: .leading, spacing: DevineTheme.Spacing.md) {
             HStack {
-                Text("Today's actions")
-                    .font(.system(.subheadline, design: .rounded, weight: .bold))
+                if let todayPlan = model.todayDailyPlan {
+                    Text("Today — \(todayPlan.theme)")
+                        .font(.system(.subheadline, design: .rounded, weight: .bold))
+                } else {
+                    Text("Today's actions")
+                        .font(.system(.subheadline, design: .rounded, weight: .bold))
+                }
 
                 Spacer()
 
@@ -463,7 +549,6 @@ struct PlanView: View {
     }
 
     private func completedWeekdays() -> Set<Int> {
-        // For now, show today as completed if all actions are done
         var days: Set<Int> = []
         if completedCount == model.todayActions.count && completedCount > 0 {
             days.insert(WeekStrip.currentWeekdayIndex())

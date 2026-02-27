@@ -1,28 +1,28 @@
 import SwiftUI
 
+/// A polished falling-confetti celebration overlay.
+/// Pieces cascade from the top of the screen downward with gentle sway and rotation.
 struct CelebrationOverlay: View {
     @Binding var isPresented: Bool
-    var message: String = "Tiny win. Keep going."
-    var particleCount: Int = 20
+    var message: String = ""
+    var pieceCount: Int = 40
 
-    @State private var particles: [Particle] = []
+    @State private var pieces: [ConfettiPiece] = []
     @State private var showMessage = false
 
     var body: some View {
         ZStack {
             if isPresented {
-                Color.black.opacity(0.01)
-                    .ignoresSafeArea()
-
-                ForEach(particles) { particle in
-                    Circle()
-                        .fill(particle.color)
-                        .frame(width: particle.size, height: particle.size)
-                        .offset(particle.offset)
-                        .opacity(particle.opacity)
+                // Confetti layer
+                GeometryReader { geo in
+                    ForEach(pieces) { piece in
+                        ConfettiView(piece: piece, containerHeight: geo.size.height)
+                    }
                 }
+                .ignoresSafeArea()
 
-                if showMessage {
+                // Optional message pill
+                if showMessage, !message.isEmpty {
                     Text(message)
                         .font(.headline.weight(.semibold))
                         .foregroundStyle(DevineTheme.Colors.textPrimary)
@@ -39,6 +39,9 @@ struct CelebrationOverlay: View {
         .onChange(of: isPresented) {
             if isPresented {
                 triggerCelebration()
+            } else {
+                pieces = []
+                showMessage = false
             }
         }
         .allowsHitTesting(false)
@@ -48,47 +51,127 @@ struct CelebrationOverlay: View {
         let colors: [Color] = DevineTheme.Gradients.celebration + [
             DevineTheme.Colors.ctaPrimary,
             DevineTheme.Colors.ctaSecondary,
-            DevineTheme.Colors.successAccent
+            DevineTheme.Colors.successAccent,
+            .yellow,
+            .mint
         ]
 
-        particles = (0..<particleCount).map { _ in
-            Particle(
-                color: colors.randomElement() ?? .pink,
-                size: CGFloat.random(in: 4...10),
-                offset: .zero,
-                opacity: 1
+        pieces = (0..<pieceCount).map { i in
+            ConfettiPiece(
+                color: colors[i % colors.count],
+                shape: ConfettiShape.allCases.randomElement() ?? .circle,
+                size: CGFloat.random(in: 6...12),
+                xPosition: CGFloat.random(in: 0...1),   // normalized 0-1
+                delay: Double.random(in: 0...0.6),
+                fallDuration: Double.random(in: 1.8...3.0),
+                swayAmount: CGFloat.random(in: 20...60),
+                rotation: Angle.degrees(Double.random(in: 0...360)),
+                spinSpeed: Double.random(in: 180...720)
             )
         }
 
-        withAnimation(.easeOut(duration: 0.8)) {
-            particles = particles.map { particle in
-                var p = particle
-                p.offset = CGSize(
-                    width: CGFloat.random(in: (-160)...160),
-                    height: CGFloat.random(in: (-300)...(-40))
-                )
-                p.opacity = 0
-                return p
-            }
-        }
-
-        withAnimation(DevineTheme.Motion.celebration.delay(0.1)) {
-            showMessage = true
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
-            withAnimation(DevineTheme.Motion.quick) {
-                showMessage = false
-                isPresented = false
+        if !message.isEmpty {
+            withAnimation(DevineTheme.Motion.celebration.delay(0.2)) {
+                showMessage = true
             }
         }
     }
 }
 
-private struct Particle: Identifiable {
+// MARK: - Confetti Shape
+
+private enum ConfettiShape: CaseIterable {
+    case circle, roundedRect, star, diamond
+}
+
+// MARK: - Confetti Piece Data
+
+private struct ConfettiPiece: Identifiable {
     let id = UUID()
     let color: Color
+    let shape: ConfettiShape
     let size: CGFloat
-    var offset: CGSize
-    var opacity: Double
+    let xPosition: CGFloat       // 0...1 normalized horizontal position
+    let delay: Double
+    let fallDuration: Double
+    let swayAmount: CGFloat
+    let rotation: Angle
+    let spinSpeed: Double         // degrees per second
+}
+
+// MARK: - Single Confetti View (handles its own animation)
+
+private struct ConfettiView: View {
+    let piece: ConfettiPiece
+    let containerHeight: CGFloat
+
+    @State private var progress: CGFloat = 0   // 0 = top, 1 = past bottom
+    @State private var swayPhase: CGFloat = 0
+    @State private var spin: Angle = .zero
+    @State private var opacity: Double = 0
+
+    var body: some View {
+        confettiShape
+            .frame(width: piece.size, height: piece.shape == .roundedRect ? piece.size * 0.5 : piece.size)
+            .foregroundColor(piece.color)
+            .rotationEffect(piece.rotation + spin)
+            .opacity(opacity)
+            .position(
+                x: UIScreen.main.bounds.width * piece.xPosition + piece.swayAmount * sin(swayPhase * .pi * 2),
+                y: -20 + (containerHeight + 40) * progress
+            )
+            .onAppear {
+                withAnimation(
+                    .easeIn(duration: piece.fallDuration)
+                    .delay(piece.delay)
+                ) {
+                    progress = 1
+                }
+
+                // Sway oscillation
+                withAnimation(
+                    .easeInOut(duration: piece.fallDuration * 0.4)
+                    .repeatCount(5, autoreverses: true)
+                    .delay(piece.delay)
+                ) {
+                    swayPhase = 1
+                }
+
+                // Spin
+                withAnimation(
+                    .linear(duration: piece.fallDuration)
+                    .delay(piece.delay)
+                ) {
+                    spin = Angle.degrees(piece.spinSpeed)
+                }
+
+                // Fade in quickly, fade out near bottom
+                withAnimation(.easeIn(duration: 0.15).delay(piece.delay)) {
+                    opacity = 1
+                }
+                withAnimation(
+                    .easeOut(duration: 0.4)
+                    .delay(piece.delay + piece.fallDuration * 0.75)
+                ) {
+                    opacity = 0
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var confettiShape: some View {
+        switch piece.shape {
+        case .circle:
+            Circle()
+        case .roundedRect:
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+        case .star:
+            Image(systemName: "star.fill")
+                .font(.system(size: piece.size * 0.85))
+        case .diamond:
+            Rectangle()
+                .rotationEffect(.degrees(45))
+                .frame(width: piece.size * 0.7, height: piece.size * 0.7)
+        }
+    }
 }

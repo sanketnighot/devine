@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct TimeGreeting: View {
+    var name: String? = nil
     var goal: GlowGoal? = nil
     var now: Date = .now
 
@@ -26,7 +27,7 @@ struct TimeGreeting: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: DevineTheme.Spacing.xs) {
-            Text("\(greeting) \(emoji)")
+            Text("\(greeting)\(name.map { ", \($0)" } ?? "") \(emoji)")
                 .font(.title2.bold())
                 .foregroundStyle(DevineTheme.Colors.textPrimary)
 

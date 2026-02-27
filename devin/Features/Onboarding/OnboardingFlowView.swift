@@ -3,26 +3,67 @@ import Photos
 import SwiftUI
 import UIKit
 
+// MARK: - Result
+
 struct OnboardingResult {
     let goal: GlowGoal
     let didProvidePhotoEvidence: Bool
+    let userProfile: UserProfile
+    let generatedPlan: GeneratedPlan?
 }
 
+// MARK: - Steps
+
 private enum OnboardingStep: Int, CaseIterable {
-    case welcome
-    case goal
-    case photo
-    case preview
+    case intro       // "hi, i'm devine."
+    case name        // what should i call you?
+    case birthday    // DOB + zodiac reveal
+    case body        // height + weight (optional)
+    case goal        // goal selection
+    case photo       // optional selfie
+    case generating  // AI plan generation
+    case reveal      // plan preview
+
+    var showsBackButton: Bool {
+        switch self {
+        case .intro, .generating, .reveal: return false
+        default: return true
+        }
+    }
+
+    var showsProgress: Bool {
+        switch self {
+        case .intro: return false
+        default: return true
+        }
+    }
+
+    var previous: OnboardingStep? {
+        guard rawValue > 0 else { return nil }
+        return OnboardingStep(rawValue: rawValue - 1)
+    }
 }
+
+// MARK: - OnboardingFlowView
 
 struct OnboardingFlowView: View {
     let onComplete: (OnboardingResult) -> Void
 
-    @State private var step: OnboardingStep = .welcome
-    @State private var selectedGoal: GlowGoal?
-    @State private var didProvidePhotoEvidence = false
+    // Step state
+    @State private var step: OnboardingStep = .intro
 
-    // Photo capture state
+    // User data
+    @State private var name = ""
+    @State private var dateOfBirth: Date = Calendar.current.date(byAdding: .year, value: -20, to: .now) ?? .now
+    @State private var heightCm: Double? = nil
+    @State private var weightKg: Double? = nil
+    @State private var prefersCm = true
+    @State private var prefersKg = true
+    @State private var selectedGoal: GlowGoal? = nil
+    @State private var generatedPlan: GeneratedPlan? = nil
+
+    // Photo capture state (reusing Mirror infrastructure)
+    @State private var didProvidePhotoEvidence = false
     @State private var selectedPreviewImage: UIImage?
     @State private var selectedAssetLocalIdentifier: String?
     @State private var selectedSource: MirrorPhotoSource?
@@ -35,616 +76,373 @@ struct OnboardingFlowView: View {
     @State private var photoPermissionAlert = false
     @State private var photoInlineError: String?
 
+    private var totalSteps: Int { OnboardingStep.allCases.filter { $0.showsProgress }.count }
+    private var currentStepIndex: Int { max(0, step.rawValue - 1) } // offset for intro (no progress bar)
+
     var body: some View {
-        VStack(spacing: DevineTheme.Spacing.xxl) {
-            header
-            content
-            Spacer()
-            controls
+        ZStack(alignment: .top) {
+            // Step content
+            stepContent
+                .transition(.asymmetric(
+                    insertion: .move(edge: .trailing).combined(with: .opacity),
+                    removal: .move(edge: .leading).combined(with: .opacity)
+                ))
+                .id(step)
+
+            // Progress + back button overlay (on top for non-intro steps)
+            if step.showsProgress || step.showsBackButton {
+                VStack(spacing: 0) {
+                    HStack(spacing: 16) {
+                        // Back button
+                        if step.showsBackButton {
+                            Button(action: goBack) {
+                                Image(systemName: "chevron.left")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(DevineTheme.Colors.textSecondary)
+                                    .frame(width: 36, height: 36)
+                                    .background(DevineTheme.Colors.surfaceCard)
+                                    .clipShape(Circle())
+                            }
+                        } else {
+                            Spacer().frame(width: 36)
+                        }
+
+                        // Progress dots
+                        if step.showsProgress {
+                            HStack(spacing: 6) {
+                                ForEach(0..<totalSteps, id: \.self) { i in
+                                    Capsule()
+                                        .fill(i <= currentStepIndex
+                                              ? DevineTheme.Colors.ctaPrimary
+                                              : DevineTheme.Colors.borderSubtle)
+                                        .frame(width: i == currentStepIndex ? 20 : 6, height: 6)
+                                        .animation(DevineTheme.Motion.quick, value: currentStepIndex)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+
+                        Spacer().frame(width: 36)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+
+                    Spacer()
+                }
+            }
         }
-        .padding(DevineTheme.Spacing.xxl)
-        .frame(maxWidth: 580)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            LinearGradient(
-                colors: gradientForStep,
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-            .animation(DevineTheme.Motion.standard, value: step)
-        )
-        .foregroundStyle(DevineTheme.Colors.textPrimary)
+        .animation(.easeInOut(duration: 0.35), value: step)
+        // Photo modifiers
         .mirrorImageSourcePicker(
             isPresented: $showImageSourcePicker,
             onCamera: requestCameraAndPresentCapture,
-            onPhotoLibrary: {
-                Task { await requestPhotosAndPresentPicker() }
-            }
+            onPhotoLibrary: { Task { await requestPhotosAndPresentPicker() } }
         )
         .mirrorPhotoLibraryPicker(
             isPresented: $showPhotoPicker,
-            onSelection: { assetIdentifier, previewImage in
-                Task { await handleSelectedPhotoAsset(assetIdentifier: assetIdentifier, previewImage: previewImage) }
+            onSelection: { id, preview in
+                Task { await handleSelectedPhotoAsset(assetIdentifier: id, previewImage: preview) }
             }
         )
         .fullScreenCover(isPresented: $showCameraCapture) {
             CameraCaptureView(
-                onImageCaptured: { image in
+                onImageCaptured: { captured in
                     showCameraCapture = false
-                    Task { await handleCapturedImage(image) }
+                    Task { await handleCapturedImage(captured) }
                 },
                 onCancel: { showCameraCapture = false }
             )
             .ignoresSafeArea()
         }
-        .alert("Camera access needed", isPresented: $cameraPermissionAlert) {
+        .alert("Camera Access Needed", isPresented: $cameraPermissionAlert) {
             Button("Open Settings") {
-                guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
-                UIApplication.shared.open(settingsURL)
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Allow camera access to capture your check-in photo.")
-        }
-        .alert("Photos access needed", isPresented: $photoPermissionAlert) {
-            Button("Open Settings") {
-                guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
-                UIApplication.shared.open(settingsURL)
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Allow Photos access to choose an existing photo.")
-        }
-    }
-
-    private var gradientForStep: [Color] {
-        switch step {
-        case .welcome:
-            DevineTheme.Gradients.screenBackground
-        case .goal:
-            [DevineTheme.Colors.bgPrimary, DevineTheme.Colors.blush.opacity(0.3)]
-        case .photo:
-            [DevineTheme.Colors.bgPrimary, DevineTheme.Colors.peach.opacity(0.3)]
-        case .preview:
-            [DevineTheme.Colors.bgPrimary, DevineTheme.Colors.bgSecondary]
-        }
-    }
-
-    // MARK: - Header
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: DevineTheme.Spacing.md) {
-            HStack {
-                if step != .welcome {
-                    Button {
-                        DevineHaptic.tap.fire()
-                        withAnimation(DevineTheme.Motion.standard) {
-                            if let previous = OnboardingStep(rawValue: step.rawValue - 1) {
-                                step = previous
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: DevineTheme.Spacing.xs) {
-                            Image(systemName: "chevron.left")
-                                .font(.caption.weight(.bold))
-                            Text("Back")
-                                .font(.subheadline.weight(.semibold))
-                        }
-                        .foregroundStyle(DevineTheme.Colors.textSecondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                Spacer()
-
-                Text("devine")
-                    .font(.system(.headline, design: .rounded, weight: .bold))
-                    .foregroundStyle(DevineTheme.Colors.ctaPrimary)
-            }
-
-            // Progress bar
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule(style: .continuous)
-                        .fill(DevineTheme.Colors.ringTrack)
-
-                    Capsule(style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: DevineTheme.Gradients.primaryCTA,
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .frame(width: geo.size.width * progressFraction)
-                        .animation(DevineTheme.Motion.expressive, value: step)
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
                 }
             }
-            .frame(height: 4)
+            Button("Not Now", role: .cancel) {}
+        } message: {
+            Text("Enable camera access in Settings to take a check-in photo.")
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .alert("Photos Access Needed", isPresented: $photoPermissionAlert) {
+            Button("Open Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("Not Now", role: .cancel) {}
+        } message: {
+            Text("Enable Photos access in Settings to choose a check-in photo.")
+        }
     }
 
-    private var progressFraction: CGFloat {
-        CGFloat(step.rawValue + 1) / CGFloat(OnboardingStep.allCases.count)
-    }
-
-    // MARK: - Content
+    // MARK: - Step Router
 
     @ViewBuilder
-    private var content: some View {
+    private var stepContent: some View {
         switch step {
-        case .welcome:
-            welcomeContent
+        case .intro:
+            OnboardingIntroView(onContinue: { advance() })
+
+        case .name:
+            OnboardingNameView(name: $name, onContinue: { advance() })
+                .padding(.top, 72) // leave room for progress/back bar
+
+        case .birthday:
+            OnboardingBirthdayView(
+                name: name,
+                dateOfBirth: $dateOfBirth,
+                onContinue: { advance() }
+            )
+            .padding(.top, 72)
+
+        case .body:
+            OnboardingBodyView(
+                name: name,
+                heightCm: $heightCm,
+                weightKg: $weightKg,
+                prefersCm: $prefersCm,
+                prefersKg: $prefersKg,
+                onContinue: { advance() }
+            )
+            .padding(.top, 72)
+
         case .goal:
-            goalContent
+            OnboardingGoalView(
+                name: name,
+                selectedGoal: $selectedGoal,
+                onContinue: { advance() }
+            )
+            .padding(.top, 72)
+
         case .photo:
-            photoContent
-        case .preview:
-            previewContent
-        }
-    }
+            photoStep
+                .padding(.top, 72)
 
-    // MARK: Welcome
-
-    private var welcomeContent: some View {
-        VStack(alignment: .leading, spacing: DevineTheme.Spacing.xl) {
-            VStack(alignment: .leading, spacing: DevineTheme.Spacing.md) {
-                Text("Glow up,\nbut make it real.")
-                    .font(.largeTitle.bold())
-                    .lineSpacing(2)
-
-                Text("A plan that evolves with you through small, sustainable daily actions.")
-                    .font(.body)
-                    .foregroundStyle(DevineTheme.Colors.textSecondary)
-                    .lineSpacing(3)
-            }
-
-            VStack(alignment: .leading, spacing: DevineTheme.Spacing.md) {
-                promiseRow(icon: "camera.viewfinder", text: "Photo is optional")
-                promiseRow(icon: "lock.shield", text: "Private by default")
-                promiseRow(icon: "eye.slash", text: "No public rankings")
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func promiseRow(icon: String, text: String) -> some View {
-        HStack(spacing: DevineTheme.Spacing.md) {
-            Image(systemName: icon)
-                .font(.body.weight(.medium))
-                .foregroundStyle(DevineTheme.Colors.successAccent)
-                .frame(width: 24)
-
-            Text(text)
-                .font(.subheadline.weight(.medium))
-        }
-    }
-
-    // MARK: Goal
-
-    private var goalContent: some View {
-        VStack(alignment: .leading, spacing: DevineTheme.Spacing.lg) {
-            Text("What do you want\nto upgrade first?")
-                .font(.title2.bold())
-                .lineSpacing(2)
-
-            VStack(spacing: DevineTheme.Spacing.sm) {
-                ForEach(GlowGoal.allCases) { goal in
-                    goalCard(goal)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func goalCard(_ goal: GlowGoal) -> some View {
-        let isSelected = selectedGoal == goal
-
-        return Button {
-            DevineHaptic.tap.fire()
-            withAnimation(DevineTheme.Motion.quick) {
-                selectedGoal = goal
-            }
-        } label: {
-            HStack(spacing: DevineTheme.Spacing.md) {
-                Image(systemName: goal.iconName)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(isSelected ? goal.accentColor : DevineTheme.Colors.textMuted)
-                    .frame(width: 28)
-
-                Text(goal.displayName)
-                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                    .foregroundStyle(DevineTheme.Colors.textPrimary)
-
-                Spacer()
-
-                if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.body)
-                        .foregroundStyle(goal.accentColor)
-                        .transition(.scale.combined(with: .opacity))
-                }
-            }
-            .padding(DevineTheme.Spacing.lg)
-            .background(
-                RoundedRectangle(cornerRadius: DevineTheme.Radius.lg, style: .continuous)
-                    .fill(isSelected ? goal.accentColor.opacity(0.1) : DevineTheme.Colors.surfaceCard)
+        case .generating:
+            OnboardingGeneratingView(
+                name: name,
+                profile: buildProfile(),
+                goal: selectedGoal ?? .faceDefinition,
+                photo: selectedPreviewImage,
+                onComplete: { plan in
+                    generatedPlan = plan
+                    advance()
+                },
+                onFallback: { advance() }
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: DevineTheme.Radius.lg, style: .continuous)
-                    .stroke(isSelected ? goal.accentColor.opacity(0.4) : Color.clear, lineWidth: 1.5)
+
+        case .reveal:
+            OnboardingRevealView(
+                name: name,
+                goal: selectedGoal ?? .faceDefinition,
+                plan: generatedPlan,
+                onComplete: finishOnboarding
             )
         }
-        .buttonStyle(.plain)
     }
 
-    // MARK: Photo
+    // MARK: - Photo Step
 
-    private var photoContent: some View {
-        VStack(alignment: .leading, spacing: DevineTheme.Spacing.xl) {
-            VStack(alignment: .leading, spacing: DevineTheme.Spacing.md) {
-                Text("Optional check-in photo")
-                    .font(.title2.bold())
+    private var photoStep: some View {
+        VStack(spacing: 0) {
+            Spacer()
 
-                Text("A private photo can unlock a verified Glow Score. You can always add this later.")
-                    .font(.body)
-                    .foregroundStyle(DevineTheme.Colors.textSecondary)
-                    .lineSpacing(3)
-            }
-
-            // Photo preview or illustration
-            SurfaceCard {
-                VStack(spacing: DevineTheme.Spacing.lg) {
-                    if let selectedPreviewImage {
-                        ZStack(alignment: .topTrailing) {
-                            Image(uiImage: selectedPreviewImage)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 120, height: 120)
-                                .clipShape(Circle())
-                                .overlay(
-                                    Circle()
-                                        .stroke(DevineTheme.Colors.ctaPrimary.opacity(0.3), lineWidth: 2)
-                                )
-
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.title3)
-                                .foregroundStyle(DevineTheme.Colors.successAccent)
-                                .background(
-                                    Circle()
-                                        .fill(DevineTheme.Colors.bgPrimary)
-                                        .padding(-2)
-                                )
-                                .offset(x: 4, y: -4)
-                        }
-
-                        Text("Looking great! Tap to retake.")
-                            .font(.caption)
-                            .foregroundStyle(DevineTheme.Colors.textMuted)
-                    } else {
-                        ZStack {
-                            Circle()
-                                .fill(
-                                    LinearGradient(
-                                        colors: [
-                                            DevineTheme.Colors.ctaPrimary.opacity(0.1),
-                                            DevineTheme.Colors.ctaSecondary.opacity(0.08),
-                                        ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .frame(width: 72, height: 72)
-
-                            Image(systemName: "camera.viewfinder")
-                                .font(.system(size: 28))
-                                .foregroundStyle(
-                                    LinearGradient(
-                                        colors: DevineTheme.Gradients.primaryCTA,
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                        }
-
-                        Text("Stored only on your device")
-                            .font(.caption)
-                            .foregroundStyle(DevineTheme.Colors.textMuted)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .onTapGesture {
-                    if selectedPreviewImage != nil {
-                        showImageSourcePicker = true
-                    }
-                }
-            }
-
-            if let photoInlineError {
-                Text(photoInlineError)
-                    .font(.caption)
-                    .foregroundStyle(DevineTheme.Colors.errorAccent)
-            }
-
-            VStack(spacing: DevineTheme.Spacing.md) {
-                gradientButton(label: selectedPreviewImage != nil ? "Continue" : "Add quick check-in now", disabled: isSavingImage) {
-                    DevineHaptic.tap.fire()
-                    if selectedPreviewImage != nil {
-                        withAnimation(DevineTheme.Motion.standard) { step = .preview }
-                    } else {
-                        showImageSourcePicker = true
-                    }
-                }
-
-                Button {
-                    DevineHaptic.tap.fire()
-                    didProvidePhotoEvidence = false
-                    withAnimation(DevineTheme.Motion.standard) {
-                        step = .preview
-                    }
-                } label: {
-                    Text("Skip for now")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(DevineTheme.Colors.textSecondary)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    // MARK: Preview
-
-    private var previewContent: some View {
-        VStack(alignment: .leading, spacing: DevineTheme.Spacing.xl) {
-            Text("Your plan is ready")
-                .font(.title2.bold())
-
-            if didProvidePhotoEvidence {
-                SurfaceCard {
-                    HStack(spacing: DevineTheme.Spacing.lg) {
-                        ZStack {
-                            Circle()
-                                .fill(DevineTheme.Colors.successAccent.opacity(0.12))
-                                .frame(width: 52, height: 52)
-
-                            Image(systemName: "checkmark.shield.fill")
-                                .font(.title3.weight(.bold))
-                                .foregroundStyle(DevineTheme.Colors.successAccent)
-                        }
-
-                        VStack(alignment: .leading, spacing: DevineTheme.Spacing.xs) {
-                            Text("Evidence received")
-                                .font(.system(.subheadline, design: .rounded, weight: .bold))
-
-                            Text("Your Glow Score will appear after the first analysis. No fake numbers.")
-                                .font(.caption)
-                                .foregroundStyle(DevineTheme.Colors.textSecondary)
-                                .lineSpacing(2)
-                        }
-
-                        Spacer()
-                    }
-                }
-            } else {
-                GradientCard(colors: DevineTheme.Gradients.heroCard, showGlow: true) {
-                    VStack(alignment: .leading, spacing: DevineTheme.Spacing.md) {
-                        HStack(spacing: DevineTheme.Spacing.md) {
-                            ProgressRing(
-                                value: 0,
-                                maxValue: 100,
-                                size: 48,
-                                lineWidth: 6,
-                                trackColor: Color.white.opacity(0.2),
-                                showLabel: false,
-                                showGlow: false
-                            )
-
-                            VStack(alignment: .leading, spacing: DevineTheme.Spacing.xs) {
-                                Text("No score yet")
-                                    .font(.system(.subheadline, design: .rounded, weight: .bold))
-                                    .foregroundStyle(DevineTheme.Colors.textOnGradient)
-
-                                Text("Add a mirror check-in anytime to unlock your verified Glow Score.")
-                                    .font(.caption)
-                                    .foregroundStyle(DevineTheme.Colors.textOnGradient.opacity(0.8))
-                                    .lineSpacing(2)
-                            }
-                        }
-                    }
-                }
-            }
-
-            if let goal = selectedGoal {
-                SurfaceCard {
-                    HStack(spacing: DevineTheme.Spacing.md) {
-                        GoalBadge(goal: goal)
-
-                        VStack(alignment: .leading, spacing: DevineTheme.Spacing.xs) {
-                            Text("3 daily actions")
-                                .font(.system(.subheadline, design: .rounded, weight: .bold))
-
-                            Text("Small, sustainable steps adapted to your goal.")
-                                .font(.caption)
-                                .foregroundStyle(DevineTheme.Colors.textSecondary)
-                        }
-
-                        Spacer()
-                    }
-                }
-            }
-
-            Text("Next: choose your plan to unlock the full adaptive experience.")
-                .font(.caption)
-                .foregroundStyle(DevineTheme.Colors.textMuted)
-                .lineSpacing(2)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    // MARK: - Controls
-
-    private var controls: some View {
-        Group {
-            switch step {
-            case .welcome:
-                gradientButton(label: "Start your glow up") {
-                    DevineHaptic.tap.fire()
-                    withAnimation(DevineTheme.Motion.standard) {
-                        step = .goal
-                    }
-                }
-
-            case .goal:
-                gradientButton(label: "Continue", disabled: selectedGoal == nil) {
-                    DevineHaptic.tap.fire()
-                    withAnimation(DevineTheme.Motion.standard) {
-                        step = .photo
-                    }
-                }
-
-            case .photo:
-                EmptyView()
-
-            case .preview:
-                gradientButton(label: "Let's go") {
-                    DevineHaptic.tap.fire()
-                    onComplete(
-                        OnboardingResult(
-                            goal: selectedGoal ?? .faceDefinition,
-                            didProvidePhotoEvidence: didProvidePhotoEvidence
-                        )
+            VStack(spacing: 24) {
+                // Headline
+                VStack(alignment: .leading, spacing: 8) {
+                    TypewriterText(
+                        text: "drop a quick selfie 📸",
+                        speed: 42,
+                        font: .system(size: 28, weight: .bold),
+                        color: DevineTheme.Colors.textPrimary
                     )
+                    Text("i'll use it to personalize your plan — totally private")
+                        .font(.system(size: 14))
+                        .foregroundColor(DevineTheme.Colors.textSecondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 28)
+
+                // Photo preview / placeholder
+                ZStack {
+                    if let preview = selectedPreviewImage {
+                        Image(uiImage: preview)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 160, height: 160)
+                            .clipShape(Circle())
+                            .overlay(
+                                Circle()
+                                    .stroke(DevineTheme.Colors.ctaPrimary, lineWidth: 3)
+                            )
+                            .overlay(alignment: .bottomTrailing) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 24))
+                                    .foregroundColor(DevineTheme.Colors.successAccent)
+                                    .background(Circle().fill(DevineTheme.Colors.bgPrimary))
+                            }
+                    } else {
+                        Circle()
+                            .fill(DevineTheme.Colors.blush.opacity(0.4))
+                            .frame(width: 160, height: 160)
+                            .overlay(
+                                Image(systemName: "camera.fill")
+                                    .font(.system(size: 36))
+                                    .foregroundColor(DevineTheme.Colors.ctaPrimary)
+                            )
+                    }
+                }
+                .onTapGesture { showImageSourcePicker = true }
+
+                if let error = photoInlineError {
+                    Text(error)
+                        .font(.system(size: 13))
+                        .foregroundColor(DevineTheme.Colors.errorAccent)
                 }
             }
+
+            Spacer()
+
+            // CTAs
+            VStack(spacing: 12) {
+                if didProvidePhotoEvidence {
+                    Button(action: { advance() }) {
+                        Text("continue →")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                            .background(
+                                LinearGradient(colors: DevineTheme.Gradients.primaryCTA, startPoint: .leading, endPoint: .trailing)
+                            )
+                            .clipShape(Capsule())
+                    }
+                } else {
+                    Button(action: { showImageSourcePicker = true }) {
+                        Label("add quick check-in now", systemImage: "camera")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                            .background(
+                                LinearGradient(colors: DevineTheme.Gradients.primaryCTA, startPoint: .leading, endPoint: .trailing)
+                            )
+                            .clipShape(Capsule())
+                    }
+                }
+
+                Button(action: { advance() }) {
+                    Text("skip for now →")
+                        .font(.system(size: 14))
+                        .foregroundColor(DevineTheme.Colors.textMuted)
+                }
+            }
+            .padding(.horizontal, 28)
+            .padding(.bottom, 40)
         }
     }
 
-    // MARK: - Gradient Button Helper
+    // MARK: - Navigation
 
-    // MARK: - Photo Logic
+    private func advance() {
+        let next = OnboardingStep(rawValue: step.rawValue + 1) ?? step
+        withAnimation(.easeInOut(duration: 0.35)) {
+            step = next
+        }
+    }
 
-    @MainActor
+    private func goBack() {
+        guard let prev = step.previous else { return }
+        withAnimation(.easeInOut(duration: 0.35)) {
+            step = prev
+        }
+    }
+
+    private func finishOnboarding() {
+        let profile = buildProfile()
+        let result = OnboardingResult(
+            goal: selectedGoal ?? .faceDefinition,
+            didProvidePhotoEvidence: didProvidePhotoEvidence,
+            userProfile: profile,
+            generatedPlan: generatedPlan
+        )
+        onComplete(result)
+    }
+
+    private func buildProfile() -> UserProfile {
+        UserProfile(
+            name: name.trimmingCharacters(in: .whitespaces).isEmpty ? "you" : name.trimmingCharacters(in: .whitespaces),
+            dateOfBirth: dateOfBirth,
+            heightCm: heightCm,
+            weightKg: weightKg,
+            prefersCentimetres: prefersCm,
+            prefersKilograms: prefersKg
+        )
+    }
+
+    // MARK: - Photo Handlers (Mirror infrastructure)
+
     private func requestPhotosAndPresentPicker() async {
-        photoInlineError = nil
-        let status = await MirrorPhotoLibraryService.shared.requestReadWriteAuthorizationIfNeeded()
-        switch status {
-        case .authorized, .limited:
-            showPhotoPicker = true
-        case .denied, .restricted:
-            photoPermissionAlert = true
-        case .notDetermined:
-            photoInlineError = "Photos permission state is unavailable."
-        @unknown default:
-            photoInlineError = "Photos permission state is unavailable."
+        let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+        await MainActor.run {
+            switch status {
+            case .authorized, .limited: showPhotoPicker = true
+            case .denied, .restricted: photoPermissionAlert = true
+            case .notDetermined: showPhotoPicker = true
+            @unknown default: break
+            }
         }
     }
 
     private func requestCameraAndPresentCapture() {
-        photoInlineError = nil
-        if !UIImagePickerController.isSourceTypeAvailable(.camera) {
-            photoInlineError = "Camera is not available on this device."
-            return
-        }
-
         let status = AVCaptureDevice.authorizationStatus(for: .video)
         switch status {
-        case .authorized:
-            showCameraCapture = true
+        case .authorized: showCameraCapture = true
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { granted in
                 DispatchQueue.main.async {
-                    if granted {
-                        showCameraCapture = true
-                    } else {
-                        cameraPermissionAlert = true
-                    }
+                    if granted { showCameraCapture = true }
+                    else { cameraPermissionAlert = true }
                 }
             }
-        case .denied, .restricted:
-            cameraPermissionAlert = true
-        @unknown default:
-            photoInlineError = "Camera permission state is unavailable."
+        case .denied, .restricted: cameraPermissionAlert = true
+        @unknown default: break
         }
     }
 
     @MainActor
     private func handleCapturedImage(_ image: UIImage) async {
-        photoInlineError = nil
         isSavingImage = true
-        defer { isSavingImage = false }
-
+        photoInlineError = nil
         do {
             let identifier = try await MirrorPhotoLibraryService.shared.saveCapturedImageAndAddToAlbum(image)
+            selectedPreviewImage = image
             selectedAssetLocalIdentifier = identifier
             selectedSource = .camera
-            selectedPhotoCapturedAt = MirrorPhotoLibraryService.shared.assetCreationDate(localIdentifier: identifier)
-            selectedPreviewImage = image
+            selectedPhotoCapturedAt = .now
             didProvidePhotoEvidence = true
         } catch {
-            photoInlineError = error.localizedDescription
+            photoInlineError = "Couldn't save photo. Try again."
         }
+        isSavingImage = false
     }
 
     @MainActor
     private func handleSelectedPhotoAsset(assetIdentifier: String?, previewImage: UIImage?) async {
-        photoInlineError = nil
+        guard let assetIdentifier else { return }
         isSavingImage = true
-        defer { isSavingImage = false }
-
+        photoInlineError = nil
         do {
-            guard let selectedIdentifier = assetIdentifier else {
-                throw MirrorPhotoLibraryError.missingAssetReference
-            }
-            try await MirrorPhotoLibraryService.shared.addAssetToCheckinsAlbum(localIdentifier: selectedIdentifier)
-
-            selectedAssetLocalIdentifier = selectedIdentifier
+            try await MirrorPhotoLibraryService.shared.addAssetToCheckinsAlbum(localIdentifier: assetIdentifier)
+            selectedPreviewImage = previewImage
+            selectedAssetLocalIdentifier = assetIdentifier
             selectedSource = .photosLibrary
-            selectedPhotoCapturedAt = MirrorPhotoLibraryService.shared.assetCreationDate(localIdentifier: selectedIdentifier)
+            selectedPhotoCapturedAt = nil
             didProvidePhotoEvidence = true
-
-            if let previewImage {
-                selectedPreviewImage = previewImage
-                return
-            }
-
-            MirrorPhotoLibraryService.shared.requestImage(
-                localIdentifier: selectedIdentifier,
-                targetSize: CGSize(width: 720, height: 720),
-                contentMode: .aspectFit
-            ) { image in
-                selectedPreviewImage = image
-            }
         } catch {
-            photoInlineError = error.localizedDescription
+            photoInlineError = "Couldn't add photo. Try again."
         }
-    }
-
-    // MARK: - Gradient Button Helper
-
-    private func gradientButton(label: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(label)
-                .font(.headline)
-                .foregroundStyle(DevineTheme.Colors.textOnGradient)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, DevineTheme.Spacing.lg)
-                .background(
-                    Capsule(style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: DevineTheme.Gradients.primaryCTA,
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                )
-                .shadow(color: DevineTheme.Gradients.primaryCTA.first?.opacity(0.3) ?? .clear, radius: 12, y: 4)
-        }
-        .buttonStyle(.plain)
-        .opacity(disabled ? 0.4 : 1)
-        .disabled(disabled)
+        isSavingImage = false
     }
 }

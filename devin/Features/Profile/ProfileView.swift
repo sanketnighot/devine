@@ -57,9 +57,19 @@ struct ProfileView: View {
                 }
 
                 VStack(spacing: DevineTheme.Spacing.sm) {
-                    Text("Hey, you \(greetingEmoji)")
+                    Text(model.userProfile.map { "\($0.name) \(greetingEmoji)" } ?? "Hey, you \(greetingEmoji)")
                         .font(.title3.bold())
                         .foregroundStyle(DevineTheme.Colors.textOnGradient)
+
+                    // Zodiac + age (if profile exists)
+                    if let profile = model.userProfile {
+                        HStack(spacing: 6) {
+                            Text(profile.zodiacSign.emoji)
+                            Text("\(profile.zodiacSign.displayName) · \(profile.age)")
+                                .font(.caption.weight(.medium))
+                        }
+                        .foregroundStyle(DevineTheme.Colors.textOnGradient.opacity(0.8))
+                    }
 
                     HStack(spacing: DevineTheme.Spacing.sm) {
                         // Goal badge (inverted for gradient bg)

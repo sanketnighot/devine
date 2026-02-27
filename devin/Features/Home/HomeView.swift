@@ -111,7 +111,7 @@ struct HomeView: View {
     // MARK: - Greeting
 
     private var greetingSection: some View {
-        TimeGreeting(goal: model.primaryGoal)
+        TimeGreeting(name: model.userProfile?.name, goal: model.primaryGoal)
     }
 
     // MARK: - Score Hero

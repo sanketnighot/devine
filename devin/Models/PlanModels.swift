@@ -1,22 +1,30 @@
 import Foundation
 import SwiftUI
 
-struct EvidenceEvent: Identifiable {
-    let id = UUID()
+struct EvidenceEvent: Identifiable, Codable {
+    let id: UUID
     let createdAt: Date
     let summary: String
     let evidenceUsed: [String]
     let evidenceMissing: [String]
+
+    init(id: UUID = UUID(), createdAt: Date, summary: String, evidenceUsed: [String], evidenceMissing: [String]) {
+        self.id = id
+        self.createdAt = createdAt
+        self.summary = summary
+        self.evidenceUsed = evidenceUsed
+        self.evidenceMissing = evidenceMissing
+    }
 }
 
-struct GoalTrajectory {
+struct GoalTrajectory: Codable {
     let minWeeks: Int
     let likelyWeeks: Int
     let maxWeeks: Int
     let confidence: Double
 }
 
-enum PlanAdjustmentSeverity: String {
+enum PlanAdjustmentSeverity: String, Codable {
     case minorTweak = "minor_tweak"
     case resequence = "resequence"
     case pivot = "pivot"
@@ -38,7 +46,7 @@ enum PlanAdjustmentSeverity: String {
     }
 }
 
-struct PlanAdjustmentRecord: Identifiable {
+struct PlanAdjustmentRecord: Identifiable, Codable {
     let id: UUID
     let createdAt: Date
     let severity: PlanAdjustmentSeverity

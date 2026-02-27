@@ -31,6 +31,10 @@ struct AppRootView: View {
             Group {
                 if !hasCompletedOnboarding && !isSubscribed {
                     OnboardingFlowView { result in
+                        model.setUserProfile(result.userProfile)
+                        if let plan = result.generatedPlan {
+                            model.setGeneratedPlan(plan)
+                        }
                         model.configure(goal: result.goal, hasInitialEvidence: result.didProvidePhotoEvidence)
                         hasCompletedOnboarding = true
                         paywallDismissedOnce = false
