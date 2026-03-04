@@ -7,6 +7,7 @@ struct UserProfile: Codable {
     var weightKg: Double?
     var prefersCentimetres: Bool = true
     var prefersKilograms: Bool = true
+    var customGoalName: String? = nil
 
     var age: Int {
         Calendar.current.dateComponents([.year], from: dateOfBirth, to: Date()).year ?? 0

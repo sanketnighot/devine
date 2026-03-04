@@ -88,6 +88,9 @@ final class PlanGenerationService {
         let name = userProfile?.name ?? "User"
         let age = userProfile?.age ?? 0
         let scoreText = currentGlowScore.map { "\($0)" } ?? "not set yet"
+        let goalLabel = primaryGoal == .custom
+            ? (userProfile?.customGoalName ?? primaryGoal.displayName)
+            : primaryGoal.displayName
 
         let doneActions = todayActions.filter { completedActionIDs.contains($0.id) }.map { $0.title }
         let skippedActions = todayActions.filter { !completedActionIDs.contains($0.id) }.map { $0.title }
@@ -120,7 +123,7 @@ final class PlanGenerationService {
             "USER PROFILE:",
             "- Name: \(name)",
             "- Age: \(age)",
-            "- Goal: \(primaryGoal.displayName)",
+            "- Goal: \(goalLabel)",
             "- Current glow score: \(scoreText)",
             "- Streak: \(streakDays) day\(streakDays == 1 ? "" : "s")",
             "",
@@ -244,6 +247,125 @@ final class PlanGenerationService {
         }
     }
 
+    // MARK: - Coach Plan Adjustment
+
+    /// Regenerates the remaining future days of the plan based on a coach suggestion.
+    func adjustPlanFromCoach(
+        currentPlan: GeneratedPlan?,
+        userProfile: UserProfile?,
+        primaryGoal: GlowGoal,
+        reason: String,
+        suggestedFocus: String,
+        severity: PlanAdjustmentSeverity
+    ) async throws -> [DailyPlan] {
+        let prompt = buildCoachAdjustmentPrompt(
+            currentPlan: currentPlan,
+            userProfile: userProfile,
+            primaryGoal: primaryGoal,
+            reason: reason,
+            suggestedFocus: suggestedFocus,
+            severity: severity
+        )
+        let rawJSON = try await gemini.generate(prompt: prompt, imageData: nil)
+        print("[PlanGeneration] Coach adjustment raw JSON (\(rawJSON.count) chars)")
+        return try parseAdjustedDays(from: rawJSON, currentPlan: currentPlan)
+    }
+
+    private func buildCoachAdjustmentPrompt(
+        currentPlan: GeneratedPlan?,
+        userProfile: UserProfile?,
+        primaryGoal: GlowGoal,
+        reason: String,
+        suggestedFocus: String,
+        severity: PlanAdjustmentSeverity
+    ) -> String {
+        let name = userProfile?.name ?? "User"
+        let goalLabel = primaryGoal == .custom
+            ? (userProfile?.customGoalName ?? primaryGoal.displayName)
+            : primaryGoal.displayName
+
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: .now)
+        let futureDays = currentPlan?.dailyPlans.filter { cal.startOfDay(for: $0.date) > today } ?? []
+        let daysToGenerate = max(futureDays.isEmpty ? 7 : futureDays.count, 1)
+
+        // Build date labels for replacement days
+        var dayLabels: [String] = []
+        for i in 0..<daysToGenerate {
+            let date = cal.date(byAdding: .day, value: i + 1, to: today)!
+            let dayNum = (currentPlan?.dailyPlans.count ?? 0) - futureDays.count + i + 2
+            dayLabels.append("Day \(dayNum) (\(date.formatted(.dateTime.weekday(.abbreviated).month().day())))")
+        }
+
+        let lines: [String] = [
+            "You are devine, a personal glow-up coach for girls aged 14–28.",
+            "Be warm, encouraging, and use casual but empowering language. Never give medical advice.",
+            "",
+            "USER: \(name), goal: \(goalLabel)",
+            "",
+            "COACH ADJUSTMENT REQUEST:",
+            "- Reason: \(reason)",
+            "- New focus: \(suggestedFocus)",
+            "- Severity: \(severity.rawValue)",
+            "",
+            "TASK: Regenerate exactly \(daysToGenerate) replacement daily plans for these upcoming days:",
+            dayLabels.joined(separator: ", "),
+            "",
+            "Each day must:",
+            "- Have a unique theme aligned with the new focus: \(suggestedFocus)",
+            "- Have exactly 3 actionable tasks (2–15 min each)",
+            "- Build progressively — easier early days, more intensive later",
+            "- Directly address the reason for the change: \(reason)",
+            "",
+            "IMPORTANT: Return ONLY valid JSON. No markdown, no backticks.",
+            "JSON schema: { \"dailyPlans\": [ {\"dayNumber\": N, \"theme\": \"...\", \"actions\": [{\"title\": \"...\", \"instructions\": \"...\", \"estimatedMinutes\": 5}, ...]}, ... ] }",
+        ]
+        return lines.joined(separator: "\n")
+    }
+
+    private func parseAdjustedDays(from rawJSON: String, currentPlan: GeneratedPlan?) throws -> [DailyPlan] {
+        let cleaned = rawJSON
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "```json", with: "")
+            .replacingOccurrences(of: "```", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let data = cleaned.data(using: .utf8) else {
+            throw GeminiError.decodingError("Could not convert coach adjustment response to data")
+        }
+
+        struct AdjustmentResponse: Decodable { let dailyPlans: [GeminiDailyPlan] }
+
+        do {
+            let response = try JSONDecoder().decode(AdjustmentResponse.self, from: data)
+
+            let cal = Calendar.current
+            let today = cal.startOfDay(for: .now)
+            let existingFuture = currentPlan?.dailyPlans.filter { cal.startOfDay(for: $0.date) > today } ?? []
+            let startOffset = (currentPlan?.dailyPlans.count ?? 0) - existingFuture.count
+
+            return response.dailyPlans.enumerated().map { index, day in
+                let date = cal.date(byAdding: .day, value: index + 1, to: today)!
+                let actions = day.actions.prefix(3).map { item in
+                    PerfectActionCodable(
+                        title: item.title,
+                        instructions: item.instructions,
+                        estimatedMinutes: item.estimatedMinutes
+                    )
+                }
+                return DailyPlan(
+                    dayNumber: startOffset + index + 1,
+                    date: date,
+                    theme: day.theme,
+                    actions: Array(actions)
+                )
+            }
+        } catch let decodingError as DecodingError {
+            print("[PlanGeneration] Coach adjustment JSON decode error: \(decodingError)")
+            throw GeminiError.decodingError(decodingError.localizedDescription)
+        }
+    }
+
     // MARK: - Plan Prompt Construction
 
     private func buildPrompt(profile: UserProfile, goal: GlowGoal) -> String {
@@ -260,6 +382,11 @@ final class PlanGenerationService {
             dayLabels.append("Day \(i + 1) (\(weekday), \(formatted))")
         }
 
+        // For a custom goal, use the user's own words rather than the enum display name
+        let goalLabel = goal == .custom
+            ? (profile.customGoalName ?? goal.displayName)
+            : goal.displayName
+
         var lines: [String] = [
             "You are devine, a personal glow-up coach for girls aged 14–28.",
             "Be warm, encouraging, and use casual but empowering language. Never give medical advice.",
@@ -267,7 +394,7 @@ final class PlanGenerationService {
             "USER PROFILE:",
             "- Name: \(profile.name)",
             "- Age: \(profile.age)",
-            "- Main goal: \(goal.displayName)",
+            "- Main goal: \(goalLabel)",
         ]
 
         if let h = profile.heightDisplay { lines.append("- Height: \(h)") }
@@ -285,7 +412,7 @@ final class PlanGenerationService {
             "- Actions should be achievable in 2–15 minutes each",
             "- Actions should progress and build on each other across the week",
             "- Day 1 should be easier/introductory, Day 7 should feel like a payoff",
-            "- Directly related to the goal: \(goal.displayName)",
+            "- Directly related to the goal: \(goalLabel)",
             "- Encouraging, not medical or clinical",
             "",
             "Also provide:",

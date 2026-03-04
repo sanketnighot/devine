@@ -7,6 +7,7 @@ enum GlowGoal: String, CaseIterable, Identifiable {
     case hairStyle = "hair_style"
     case energyFitness = "energy_fitness"
     case confidenceConsistency = "confidence_consistency"
+    case custom = "custom"
 
     var id: String { rawValue }
 
@@ -24,6 +25,8 @@ enum GlowGoal: String, CaseIterable, Identifiable {
             return "Energy + fitness"
         case .confidenceConsistency:
             return "Confidence + consistency"
+        case .custom:
+            return "Something else"
         }
     }
 }

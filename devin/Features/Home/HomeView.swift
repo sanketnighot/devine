@@ -49,6 +49,9 @@ struct HomeView: View {
                     primaryActionHero
                     todayProgressSection
                     streakSection
+                    if let nudge = model.coachNudge {
+                        coachNudgeCard(nudge)
+                    }
                     weekSummaryCard
                     timelineLink
 
@@ -59,6 +62,7 @@ struct HomeView: View {
                 .padding(.horizontal, DevineTheme.Spacing.lg)
                 .padding(.top, DevineTheme.Spacing.md)
                 .padding(.bottom, DevineTheme.Spacing.xxxl)
+                .animation(DevineTheme.Motion.expressive, value: model.coachNudge != nil)
             }
             .background(
                 LinearGradient(
@@ -467,6 +471,72 @@ struct HomeView: View {
 
     private var streakSection: some View {
         StreakCard(streakDays: model.streakDays)
+    }
+
+    // MARK: - Coach Nudge Card
+
+    @ViewBuilder
+    private func coachNudgeCard(_ nudge: CoachNudge) -> some View {
+        SurfaceCard {
+            VStack(alignment: .leading, spacing: DevineTheme.Spacing.md) {
+                HStack(spacing: DevineTheme.Spacing.sm) {
+                    ZStack {
+                        Circle()
+                            .fill(DevineTheme.Colors.ctaPrimary.opacity(0.12))
+                            .frame(width: 36, height: 36)
+                        Text("✦")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(DevineTheme.Colors.ctaPrimary)
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(nudge.headline)
+                            .font(.system(.subheadline, design: .rounded, weight: .bold))
+                            .foregroundStyle(DevineTheme.Colors.textPrimary)
+                        Text(nudge.subtitle)
+                            .font(.caption)
+                            .foregroundStyle(DevineTheme.Colors.textSecondary)
+                    }
+
+                    Spacer()
+
+                    Button {
+                        DevineHaptic.tap.fire()
+                        model.dismissCoachNudge()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(DevineTheme.Colors.textMuted)
+                            .padding(8)
+                    }
+                }
+
+                Button {
+                    DevineHaptic.tap.fire()
+                    model.selectedTab = 2
+                } label: {
+                    HStack(spacing: DevineTheme.Spacing.sm) {
+                        Text("✦")
+                            .font(.system(size: 12, weight: .bold))
+                        Text("Chat with Coach")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, DevineTheme.Spacing.md)
+                    .background(
+                        LinearGradient(
+                            colors: DevineTheme.Gradients.primaryCTA,
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .clipShape(Capsule(style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .transition(.scale(scale: 0.96).combined(with: .opacity))
     }
 
     // MARK: - Week Summary Card

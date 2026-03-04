@@ -11,14 +11,18 @@ struct OnboardingRevealView: View {
     @State private var showActions = false
     @State private var showCTA = false
     @State private var showCelebration = false
+    @State private var selectedDayIndex = 0
 
-    private var todayPlan: DailyPlan? {
-        plan?.todayPlan
+    private var selectedPlan: DailyPlan? {
+        guard let plans = plan?.dailyPlans, plans.indices.contains(selectedDayIndex) else {
+            return plan?.todayPlan
+        }
+        return plans[selectedDayIndex]
     }
 
-    private var todayActions: [PerfectAction] {
-        if let todayPlan {
-            return todayPlan.actions.map { $0.toPerfectAction() }
+    private var selectedActions: [PerfectAction] {
+        if let p = selectedPlan {
+            return p.actions.map { $0.toPerfectAction() }
         }
         return PerfectAction.defaults(for: goal)
     }
@@ -95,18 +99,19 @@ struct OnboardingRevealView: View {
                         .transition(.scale(scale: 0.92).combined(with: .opacity))
                     }
 
-                    // Today's actions
+                    // Selected day's actions
                     if showActions {
                         VStack(spacing: 12) {
                             HStack {
-                                Text(todayPlan.map { "day 1 — \($0.theme.lowercased()) 🔥" } ?? "today's actions 🔥")
+                                Text(selectedPlan.map { "day \($0.dayNumber) — \($0.theme.lowercased()) 🔥" } ?? "today's actions 🔥")
                                     .font(.system(size: 13, weight: .semibold))
                                     .foregroundColor(DevineTheme.Colors.textSecondary)
+                                    .animation(DevineTheme.Motion.quick, value: selectedDayIndex)
 
                                 Spacer()
                             }
 
-                            ForEach(Array(todayActions.enumerated()), id: \.element.id) { i, action in
+                            ForEach(Array(selectedActions.enumerated()), id: \.element.id) { i, action in
                                 ActionRevealCard(action: action, index: i, goal: goal)
                                     .transition(.asymmetric(
                                         insertion: .move(edge: .trailing).combined(with: .opacity),
@@ -200,26 +205,36 @@ struct OnboardingRevealView: View {
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
-                        ForEach(plan.dailyPlans) { day in
-                            VStack(spacing: 6) {
-                                Text("D\(day.dayNumber)")
-                                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                                    .foregroundColor(day.dayNumber == 1 ? .white : DevineTheme.Colors.textSecondary)
-                                    .frame(width: 28, height: 28)
-                                    .background(
-                                        Circle()
-                                            .fill(day.dayNumber == 1
-                                                  ? goal.accentColor
-                                                  : DevineTheme.Colors.bgSecondary)
-                                    )
+                        ForEach(Array(plan.dailyPlans.enumerated()), id: \.element.id) { idx, day in
+                            let isSelected = idx == selectedDayIndex
+                            Button {
+                                withAnimation(DevineTheme.Motion.quick) {
+                                    selectedDayIndex = idx
+                                }
+                                DevineHaptic.tap.fire()
+                            } label: {
+                                VStack(spacing: 6) {
+                                    Text("D\(day.dayNumber)")
+                                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                                        .foregroundColor(isSelected ? .white : DevineTheme.Colors.textSecondary)
+                                        .frame(width: 28, height: 28)
+                                        .background(
+                                            Circle()
+                                                .fill(isSelected
+                                                      ? goal.accentColor
+                                                      : DevineTheme.Colors.bgSecondary)
+                                        )
 
-                                Text(day.theme)
-                                    .font(.system(size: 9))
-                                    .foregroundColor(DevineTheme.Colors.textMuted)
-                                    .lineLimit(2)
-                                    .multilineTextAlignment(.center)
-                                    .frame(width: 64)
+                                    Text(day.theme)
+                                        .font(.system(size: 9, weight: isSelected ? .semibold : .regular))
+                                        .foregroundColor(isSelected ? goal.accentColor : DevineTheme.Colors.textMuted)
+                                        .lineLimit(2)
+                                        .multilineTextAlignment(.center)
+                                        .frame(width: 64)
+                                }
                             }
+                            .buttonStyle(.plain)
+                            .animation(DevineTheme.Motion.quick, value: selectedDayIndex)
                         }
                     }
                 }
@@ -274,7 +289,7 @@ private struct ActionRevealCard: View {
         .opacity(appeared ? 1 : 0)
         .offset(x: appeared ? 0 : 20)
         .onAppear {
-            withAnimation(DevineTheme.Motion.expressive.delay(Double(index) * 0.15)) {
+            withAnimation(DevineTheme.Motion.expressive) {
                 appeared = true
             }
         }

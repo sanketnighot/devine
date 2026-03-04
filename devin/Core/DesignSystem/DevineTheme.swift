@@ -126,6 +126,7 @@ extension GlowGoal {
         case .hairStyle: DevineTheme.Colors.goalHair
         case .energyFitness: DevineTheme.Colors.goalEnergy
         case .confidenceConsistency: DevineTheme.Colors.goalConfidence
+        case .custom: DevineTheme.Colors.ctaPrimary
         }
     }
 
@@ -137,6 +138,7 @@ extension GlowGoal {
         case .hairStyle: "comb"
         case .energyFitness: "bolt.fill"
         case .confidenceConsistency: "star.fill"
+        case .custom: "plus.circle"
         }
     }
 }

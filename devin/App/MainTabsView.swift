@@ -6,26 +6,26 @@ struct MainTabsView: View {
     let onShowPaywall: () -> Void
 
     var body: some View {
-        TabView {
+        TabView(selection: $model.selectedTab) {
             HomeView(model: model, isSubscribed: isSubscribed, onShowPaywall: onShowPaywall)
-                .tabItem {
-                    Label("Home", systemImage: "house.fill")
-                }
+                .tabItem { Label("Home", systemImage: "house.fill") }
+                .tag(0)
 
             PlanView(model: model)
-                .tabItem {
-                    Label("Plan", systemImage: "list.bullet.clipboard")
-                }
+                .tabItem { Label("Plan", systemImage: "list.bullet.clipboard") }
+                .tag(1)
+
+            ChatView(model: model)
+                .tabItem { Label("Coach", systemImage: "wand.and.stars") }
+                .tag(2)
 
             SocialView(model: model)
-                .tabItem {
-                    Label("Social", systemImage: "person.3.fill")
-                }
+                .tabItem { Label("Social", systemImage: "person.3.fill") }
+                .tag(3)
 
             ProfileView(model: model, isSubscribed: isSubscribed, onShowPaywall: onShowPaywall)
-                .tabItem {
-                    Label("Profile", systemImage: "person.crop.circle")
-                }
+                .tabItem { Label("Profile", systemImage: "person.crop.circle") }
+                .tag(4)
         }
     }
 }

@@ -24,6 +24,10 @@ final class DevineAppModel: ObservableObject {
     @Published private(set) var userProfile: UserProfile?
     @Published private(set) var generatedPlan: GeneratedPlan?
 
+    // Navigation & Coach Nudge
+    @Published var selectedTab: Int = 0
+    @Published var coachNudge: CoachNudge?
+
     // Social
     @Published var glowCircle: GlowCircle?
 
@@ -47,6 +51,19 @@ final class DevineAppModel: ObservableObject {
     var hasCheckedInToday: Bool {
         let cal = Calendar.current
         return mirrorCheckins.contains { cal.isDateInToday($0.createdAt) }
+    }
+
+    /// Stats snapshot used by the AI chat coach.
+    var chatStats: ChatStats {
+        ChatStats(
+            glowScore: glowScore,
+            streakDays: streakDays,
+            goal: primaryGoal,
+            completedToday: completedActionIDs.count,
+            totalToday: todayActions.count,
+            currentPlanDay: generatedPlan?.todayPlan?.dayNumber ?? 1,
+            customGoalName: userProfile?.customGoalName
+        )
     }
 
     /// Public read-only access for PlanView to check per-day completion.
@@ -158,6 +175,8 @@ final class DevineAppModel: ObservableObject {
         glowCircle = nil
         planAdjustmentHistory = []
         checkinEvaluationState = .idle
+        selectedTab = 0
+        coachNudge = nil
 
         // 4. Reset private state
         currentDayKey = DevineAppModel.dayKey(for: .now)
@@ -170,6 +189,19 @@ final class DevineAppModel: ObservableObject {
     func rollOverIfNeeded() {
         let newKey = DevineAppModel.dayKey(for: .now)
         guard newKey != currentDayKey else { return }
+
+        // Detect streak break: new day started but yesterday's actions weren't completed
+        if streakCreditedDayKey != currentDayKey && streakDays > 1 {
+            let brokenStreak = streakDays
+            streakDays = 0
+            coachNudge = CoachNudge(
+                type: .streakBroken,
+                headline: "Your \(brokenStreak)-day streak ended",
+                subtitle: "Let's figure out what got in the way and restart",
+                seedMessage: "I just lost my \(brokenStreak)-day glow streak. I want to understand what got in the way and build a realistic restart plan. What usually causes streaks to break, and what's the fastest way to rebuild momentum?"
+            )
+        }
+
         currentDayKey = newKey
         completedActionIDs.removeAll()
         loadTodayActionsFromPlan()
@@ -296,6 +328,7 @@ final class DevineAppModel: ObservableObject {
     func acceptCheckinEvaluation() {
         guard case .ready(let evaluation) = checkinEvaluationState else { return }
 
+        let previousScore = glowScore
         glowScore = evaluation.updatedGlowScore
         aiSubscores = evaluation.updatedSubscores
         confidence = min(0.92, max(0.36, 0.45 + Double(evidenceLedger.count) * 0.07))
@@ -340,6 +373,13 @@ final class DevineAppModel: ObservableObject {
             ))
         }
 
+        // Set coach nudge based on score change
+        coachNudge = buildCheckinNudge(
+            newScore: evaluation.updatedGlowScore,
+            previousScore: previousScore,
+            feedback: evaluation.feedback
+        )
+
         checkinEvaluationState = .idle
         persistState()
     }
@@ -348,6 +388,7 @@ final class DevineAppModel: ObservableObject {
     func dismissCheckinEvaluation() {
         guard case .ready(let evaluation) = checkinEvaluationState else { return }
 
+        let previousScore = glowScore
         glowScore = evaluation.updatedGlowScore
         aiSubscores = evaluation.updatedSubscores
         confidence = min(0.92, max(0.36, 0.45 + Double(evidenceLedger.count) * 0.07))
@@ -366,7 +407,69 @@ final class DevineAppModel: ObservableObject {
             at: 0
         )
 
+        // Set coach nudge based on score change
+        coachNudge = buildCheckinNudge(
+            newScore: evaluation.updatedGlowScore,
+            previousScore: previousScore,
+            feedback: evaluation.feedback
+        )
+
         checkinEvaluationState = .idle
+        persistState()
+    }
+
+    // MARK: - Coach Nudge
+
+    func dismissCoachNudge() {
+        coachNudge = nil
+    }
+
+    // MARK: - Chat Plan Adjustment
+
+    /// Calls Gemini to regenerate future plan days and merges them into the current plan.
+    func applyCoachPlanAdjustment(reason: String, suggestedFocus: String, severity: PlanAdjustmentSeverity) async throws {
+        let updatedDays = try await PlanGenerationService().adjustPlanFromCoach(
+            currentPlan: generatedPlan,
+            userProfile: userProfile,
+            primaryGoal: primaryGoal,
+            reason: reason,
+            suggestedFocus: suggestedFocus,
+            severity: severity
+        )
+
+        guard var plan = generatedPlan else { return }
+        let mergedDays = mergeUpdatedDays(existing: plan.dailyPlans, updated: updatedDays)
+        plan = GeneratedPlan(
+            id: plan.id,
+            generatedAt: plan.generatedAt,
+            goalRawValue: plan.goalRawValue,
+            dailyPlans: mergedDays,
+            summary: plan.summary,
+            rationale: plan.rationale,
+            initialGlowScore: plan.initialGlowScore,
+            subscores: plan.subscores
+        )
+        generatedPlan = plan
+        latestAdjustmentSeverity = severity
+        planAdjustmentHistory.append(PlanAdjustmentRecord(
+            createdAt: .now,
+            severity: severity,
+            reason: "\(reason). Focus: \(suggestedFocus)",
+            associatedEvidence: ["chat_coach"]
+        ))
+        loadTodayActionsFromPlan()
+        persistState()
+    }
+
+    /// Legacy synchronous record — kept for internal use only.
+    func recordChatPlanAdjustment(reason: String, suggestedFocus: String, severity: PlanAdjustmentSeverity) {
+        latestAdjustmentSeverity = severity
+        planAdjustmentHistory.append(PlanAdjustmentRecord(
+            createdAt: .now,
+            severity: severity,
+            reason: "\(reason). Focus: \(suggestedFocus)",
+            associatedEvidence: ["chat_coach"]
+        ))
         persistState()
     }
 
@@ -516,6 +619,32 @@ final class DevineAppModel: ObservableObject {
             todayActions = PerfectAction.defaults(for: primaryGoal)
         }
         completedActionIDs = Set(completedActionsByDay[currentDayKey] ?? [])
+    }
+
+    private func buildCheckinNudge(newScore: Int, previousScore: Int?, feedback: String) -> CoachNudge {
+        let delta = newScore - (previousScore ?? newScore)
+        if delta <= -3 {
+            return CoachNudge(
+                type: .scoreDrop,
+                headline: "Your score dipped — let's recover",
+                subtitle: "Coach has a targeted plan to get you back up",
+                seedMessage: "My glow score just dropped to \(newScore) after my check-in (was \(previousScore ?? newScore)). The AI noted: \"\(feedback)\". What specifically might have caused this drop and what's the fastest, most targeted way to recover?"
+            )
+        } else if delta >= 5 {
+            return CoachNudge(
+                type: .scoreRise,
+                headline: "Your glow score went up! \(newScore) ✦",
+                subtitle: "Coach can help you lock in this momentum",
+                seedMessage: "My glow score just jumped to \(newScore) after my check-in! The AI said: \"\(feedback)\". What specifically is working that I should double down on? And what's the #1 thing to keep this momentum going?"
+            )
+        } else {
+            return CoachNudge(
+                type: .postCheckin,
+                headline: "Coach reviewed your check-in",
+                subtitle: "Get personalized next steps based on your data",
+                seedMessage: "I just completed my mirror check-in. My glow score is \(newScore). Here's what was noted: \"\(feedback)\". Based on this, what should I prioritize for the next few days to make the most progress?"
+            )
+        }
     }
 
     private func applyMirrorCheckinScoring(tags: [String], note: String) {

@@ -4,49 +4,80 @@ struct OnboardingIntroView: View {
     let onContinue: () -> Void
 
     @State private var showCTA = false
-    @State private var particles: [SparkleParticle] = SparkleParticle.generate(count: 18)
-    @State private var animateParticles = false
+    @State private var marksVisible = false
+
+    // Fixed positions for the 5 decorative ✦ marks — deliberate, not random
+    private let marks: [(x: CGFloat, y: CGFloat, size: CGFloat, delay: Double)] = [
+        (-130,  -320, 10, 0.0),
+        ( 140,  -270,  7, 0.2),
+        (-150,    20, 12, 0.5),
+        ( 155,   120,  8, 0.7),
+        (  20,   310,  9, 0.4),
+    ]
 
     var body: some View {
         ZStack {
-            // Background gradient
+            // ── Background gradient ──────────────────────────────────────
             LinearGradient(
                 colors: [
                     DevineTheme.Colors.ctaPrimary,
                     DevineTheme.Colors.ctaSecondary,
-                    DevineTheme.Colors.ctaPrimaryPressed
+                    DevineTheme.Colors.ctaPrimaryPressed,
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
             .ignoresSafeArea()
 
-            // Floating sparkle particles
-            ForEach(particles) { p in
-                Text(p.symbol)
-                    .font(.system(size: p.size))
-                    .opacity(animateParticles ? p.targetOpacity : 0)
-                    .offset(
-                        x: animateParticles ? p.targetX : p.startX,
-                        y: animateParticles ? p.targetY : p.startY
-                    )
+            // ── Ambient aurora blobs ─────────────────────────────────────
+            // Three large blurred circles at intentional positions
+            // create the soft light-bloom feel without clutter
+            Group {
+                // Top-right warm bloom
+                Circle()
+                    .fill(Color.white.opacity(0.18))
+                    .frame(width: 340)
+                    .blur(radius: 70)
+                    .offset(x: 130, y: -240)
+
+                // Bottom-left cool bloom
+                Circle()
+                    .fill(Color.white.opacity(0.12))
+                    .frame(width: 280)
+                    .blur(radius: 60)
+                    .offset(x: -120, y: 290)
+
+                // Center subtle halo behind the text area
+                Circle()
+                    .fill(Color.white.opacity(0.07))
+                    .frame(width: 420)
+                    .blur(radius: 90)
+                    .offset(x: 0, y: 60)
+            }
+
+            // ── Intentional geometric marks ──────────────────────────────
+            // 5 ✦ marks at fixed, grid-aligned positions — not random
+            ForEach(Array(marks.enumerated()), id: \.offset) { index, mark in
+                Text("✦")
+                    .font(.system(size: mark.size, weight: .light))
+                    .foregroundColor(.white)
+                    .opacity(marksVisible ? 0.35 : 0)
+                    .offset(x: mark.x, y: mark.y)
                     .animation(
-                        .easeInOut(duration: p.duration)
-                        .repeatForever(autoreverses: true)
-                        .delay(p.delay),
-                        value: animateParticles
+                        .easeInOut(duration: 0.8).delay(mark.delay),
+                        value: marksVisible
                     )
             }
 
-            // Main content
+            // ── Main content ─────────────────────────────────────────────
             VStack(spacing: 0) {
                 Spacer()
 
-                // Logo mark
+                // Logo mark — slightly larger for visual authority
                 Text("✦")
-                    .font(.system(size: 48))
-                    .foregroundColor(.white.opacity(0.9))
-                    .padding(.bottom, 32)
+                    .font(.system(size: 52, weight: .ultraLight))
+                    .foregroundColor(.white.opacity(0.95))
+                    .padding(.bottom, 36)
 
                 // Typewriter messages
                 VStack(alignment: .leading, spacing: 16) {
@@ -114,41 +145,10 @@ struct OnboardingIntroView: View {
             }
         }
         .onAppear {
-            animateParticles = true
-        }
-    }
-}
-
-// MARK: - Particle Model
-
-private struct SparkleParticle: Identifiable {
-    let id = UUID()
-    let symbol: String
-    let size: CGFloat
-    let startX: CGFloat
-    let startY: CGFloat
-    let targetX: CGFloat
-    let targetY: CGFloat
-    let targetOpacity: Double
-    let duration: Double
-    let delay: Double
-
-    static func generate(count: Int) -> [SparkleParticle] {
-        let symbols = ["✦", "✧", "⋆", "·", "✨", "⭑", "◇", "◆"]
-        return (0..<count).map { _ in
-            let x = CGFloat.random(in: -180...180)
-            let y = CGFloat.random(in: -380...380)
-            return SparkleParticle(
-                symbol: symbols.randomElement()!,
-                size: CGFloat.random(in: 8...22),
-                startX: x + CGFloat.random(in: -20...20),
-                startY: y + CGFloat.random(in: -20...20),
-                targetX: x,
-                targetY: y,
-                targetOpacity: Double.random(in: 0.15...0.55),
-                duration: Double.random(in: 2.5...5.0),
-                delay: Double.random(in: 0...2.5)
-            )
+            // Staggered mark appearance
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                marksVisible = true
+            }
         }
     }
 }

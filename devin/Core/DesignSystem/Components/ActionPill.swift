@@ -35,7 +35,7 @@ struct ActionPill: View {
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, minHeight: 96)
             .padding(.vertical, DevineTheme.Spacing.md)
             .padding(.horizontal, DevineTheme.Spacing.sm)
             .background(

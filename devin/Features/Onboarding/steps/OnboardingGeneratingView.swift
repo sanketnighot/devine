@@ -6,40 +6,84 @@ struct OnboardingGeneratingView: View {
     let goal: GlowGoal
     let photo: UIImage?
     let onComplete: (GeneratedPlan) -> Void
-    let onFallback: () -> Void   // called if Gemini fails, uses default plan
+    let onFallback: () -> Void
 
     @State private var phase: Phase = .thinking
     @State private var orbScale: CGFloat = 1.0
     @State private var orbOpacity: Double = 0.7
-    @State private var particles: [FloatParticle] = FloatParticle.generate()
+    @State private var ringsVisible = false
+    @State private var rotation: Double = 0
     @State private var summaryText = ""
     @State private var showCTA = false
     @State private var generatedPlan: GeneratedPlan?
 
     private enum Phase {
-        case thinking   // typewriter + orb + particle animation
-        case revealing  // typewriter summary from Gemini
-        case ready      // CTA visible
+        case thinking
+        case revealing
+        case ready
     }
 
     var body: some View {
         ZStack {
             DevineTheme.Colors.bgPrimary.ignoresSafeArea()
 
-            // Floating particles
-            ForEach(particles) { p in
-                Text(p.symbol)
-                    .font(.system(size: p.size))
-                    .offset(x: p.x, y: p.y)
-                    .opacity(p.opacity)
+            // ── Ambient center glow ──────────────────────────────────────
+            // Large radial bloom behind the orb — atmospheric depth
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            DevineTheme.Colors.ctaPrimary.opacity(0.12),
+                            DevineTheme.Colors.ctaSecondary.opacity(0.06),
+                            .clear,
+                        ],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: 220
+                    )
+                )
+                .frame(width: 440)
+                .blur(radius: 20)
+                .scaleEffect(orbScale)
+                .opacity(ringsVisible ? 1 : 0)
+                .animation(.easeIn(duration: 0.6), value: ringsVisible)
+
+            // ── Orbital rings ─────────────────────────────────────────────
+            // 3 concentric stroke rings, staggered pulse — signals active thinking
+            ForEach([0, 1, 2], id: \.self) { i in
+                let diameter = CGFloat(200 + i * 90)
+                let baseOpacity = 0.18 - Double(i) * 0.05
+                Circle()
+                    .stroke(
+                        DevineTheme.Colors.ctaPrimary.opacity(baseOpacity),
+                        lineWidth: i == 0 ? 1.5 : 1.0
+                    )
+                    .frame(width: diameter)
+                    .scaleEffect(orbScale > 1 ? 1 + CGFloat(i) * 0.025 : 1)
+                    .opacity(ringsVisible ? 1 : 0)
                     .animation(
-                        .easeInOut(duration: p.duration)
+                        .easeInOut(duration: 1.6 + Double(i) * 0.4)
                         .repeatForever(autoreverses: true)
-                        .delay(p.delay),
+                        .delay(Double(i) * 0.35),
                         value: orbScale
                     )
+                    .animation(.easeIn(duration: 0.5).delay(Double(i) * 0.15), value: ringsVisible)
             }
 
+            // ── Rotating orbital marks ────────────────────────────────────
+            // 4 ✦ marks at compass points on a fixed radius,
+            // rotating as a unit — deliberate motion, not random scatter
+            ForEach([0.0, 90.0, 180.0, 270.0], id: \.self) { angle in
+                Text("✦")
+                    .font(.system(size: 7, weight: .light))
+                    .foregroundColor(DevineTheme.Colors.ctaPrimary.opacity(0.5))
+                    .offset(y: -116)
+                    .rotationEffect(.degrees(angle + rotation))
+                    .opacity(ringsVisible ? 1 : 0)
+                    .animation(.easeIn(duration: 0.4).delay(0.4), value: ringsVisible)
+            }
+
+            // ── Main content ──────────────────────────────────────────────
             VStack(spacing: 0) {
                 Spacer()
 
@@ -49,7 +93,11 @@ struct OnboardingGeneratingView: View {
                         Circle()
                             .fill(
                                 RadialGradient(
-                                    colors: [DevineTheme.Colors.ctaPrimary.opacity(0.4), DevineTheme.Colors.ctaSecondary.opacity(0.1), .clear],
+                                    colors: [
+                                        DevineTheme.Colors.ctaPrimary.opacity(0.4),
+                                        DevineTheme.Colors.ctaSecondary.opacity(0.1),
+                                        .clear,
+                                    ],
                                     center: .center,
                                     startRadius: 0,
                                     endRadius: 80
@@ -64,7 +112,8 @@ struct OnboardingGeneratingView: View {
                             .foregroundStyle(
                                 LinearGradient(
                                     colors: DevineTheme.Gradients.primaryCTA,
-                                    startPoint: .topLeading, endPoint: .bottomTrailing
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
                                 )
                             )
                             .scaleEffect(orbScale * 0.95)
@@ -154,7 +203,8 @@ struct OnboardingGeneratingView: View {
                             .background(
                                 LinearGradient(
                                     colors: DevineTheme.Gradients.primaryCTA,
-                                    startPoint: .leading, endPoint: .trailing
+                                    startPoint: .leading,
+                                    endPoint: .trailing
                                 )
                             )
                             .clipShape(Capsule())
@@ -167,9 +217,15 @@ struct OnboardingGeneratingView: View {
         }
         .onAppear {
             startOrbAnimation()
+            startRotation()
             startPlanGeneration()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                ringsVisible = true
+            }
         }
     }
+
+    // MARK: - Animations
 
     private func startOrbAnimation() {
         withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) {
@@ -177,6 +233,15 @@ struct OnboardingGeneratingView: View {
             orbOpacity = 1.0
         }
     }
+
+    private func startRotation() {
+        // Continuous slow rotation — 18s per revolution feels deliberate, not frantic
+        withAnimation(.linear(duration: 18).repeatForever(autoreverses: false)) {
+            rotation = 360
+        }
+    }
+
+    // MARK: - Plan Generation
 
     private func startPlanGeneration() {
         Task {
@@ -195,8 +260,6 @@ struct OnboardingGeneratingView: View {
                 }
             } catch {
                 print("[Onboarding] ❌ Plan generation failed: \(error)")
-                print("[Onboarding] Error details: \(error.localizedDescription)")
-                // Show error message but still let user continue with defaults
                 await MainActor.run {
                     summaryText = "hmm, i couldn't reach the AI right now 😅 but don't worry — i've got a solid starter plan for your \(goal.displayName.lowercased()) goal. you can regenerate later!"
                     withAnimation(DevineTheme.Motion.standard) {
@@ -204,34 +267,6 @@ struct OnboardingGeneratingView: View {
                     }
                 }
             }
-        }
-    }
-}
-
-// MARK: - Float Particle
-
-private struct FloatParticle: Identifiable {
-    let id = UUID()
-    let symbol: String
-    let size: CGFloat
-    let x: CGFloat
-    let y: CGFloat
-    let opacity: Double
-    let duration: Double
-    let delay: Double
-
-    static func generate() -> [FloatParticle] {
-        let symbols = ["✨", "🌟", "💪", "⭐️", "✦", "◇"]
-        return (0..<12).map { _ in
-            FloatParticle(
-                symbol: symbols.randomElement()!,
-                size: CGFloat.random(in: 14...28),
-                x: CGFloat.random(in: -160...160),
-                y: CGFloat.random(in: -300...300),
-                opacity: Double.random(in: 0.1...0.4),
-                duration: Double.random(in: 2.0...4.5),
-                delay: Double.random(in: 0...2.0)
-            )
         }
     }
 }

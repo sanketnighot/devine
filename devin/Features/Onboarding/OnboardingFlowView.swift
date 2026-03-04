@@ -60,6 +60,7 @@ struct OnboardingFlowView: View {
     @State private var prefersCm = true
     @State private var prefersKg = true
     @State private var selectedGoal: GlowGoal? = nil
+    @State private var customGoalText: String = ""
     @State private var generatedPlan: GeneratedPlan? = nil
 
     // Photo capture state (reusing Mirror infrastructure)
@@ -211,6 +212,7 @@ struct OnboardingFlowView: View {
             OnboardingGoalView(
                 name: name,
                 selectedGoal: $selectedGoal,
+                customGoalText: $customGoalText,
                 onContinue: { advance() }
             )
             .padding(.top, 72)
@@ -371,13 +373,16 @@ struct OnboardingFlowView: View {
     }
 
     private func buildProfile() -> UserProfile {
-        UserProfile(
-            name: name.trimmingCharacters(in: .whitespaces).isEmpty ? "you" : name.trimmingCharacters(in: .whitespaces),
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        let customName = customGoalText.trimmingCharacters(in: .whitespaces)
+        return UserProfile(
+            name: trimmedName.isEmpty ? "you" : trimmedName,
             dateOfBirth: dateOfBirth,
             heightCm: heightCm,
             weightKg: weightKg,
             prefersCentimetres: prefersCm,
-            prefersKilograms: prefersKg
+            prefersKilograms: prefersKg,
+            customGoalName: customName.isEmpty ? nil : customName
         )
     }
 

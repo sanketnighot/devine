@@ -68,6 +68,13 @@ struct PerfectAction: Identifiable, Hashable {
                 PerfectAction(title: "Action sprint", instructions: "Do one focused five-minute sprint.", estimatedMinutes: 5),
                 PerfectAction(title: "Night reflection", instructions: "Log one completed promise to yourself.", estimatedMinutes: 2)
             ]
+
+        case .custom:
+            return [
+                PerfectAction(title: "Morning intention", instructions: "Write one focus for today — keep it specific.", estimatedMinutes: 3),
+                PerfectAction(title: "Midday check-in", instructions: "Pause for 2 minutes to assess your energy and pivot if needed.", estimatedMinutes: 2),
+                PerfectAction(title: "Evening reflection", instructions: "Note one thing that moved you toward your goal today.", estimatedMinutes: 3)
+            ]
         }
     }
 }

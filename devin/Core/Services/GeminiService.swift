@@ -26,6 +26,34 @@ enum GeminiError: LocalizedError {
     }
 }
 
+// MARK: - Chat Request Model (multi-turn with system instruction)
+
+private struct GeminiChatRequest: Encodable {
+    let systemInstruction: SystemInstruction?
+    let contents: [ChatContent]
+    let generationConfig: GenerationConfig?
+
+    enum CodingKeys: String, CodingKey {
+        case systemInstruction = "system_instruction"
+        case contents
+        case generationConfig
+    }
+
+    struct SystemInstruction: Encodable {
+        let parts: [TextPart]
+    }
+    struct ChatContent: Encodable {
+        let role: String
+        let parts: [TextPart]
+    }
+    struct TextPart: Encodable {
+        let text: String
+    }
+    struct GenerationConfig: Encodable {
+        let temperature: Double?
+    }
+}
+
 // MARK: - Request / Response Models
 
 private struct GeminiRequest: Encodable {
@@ -184,6 +212,72 @@ final class GeminiService {
                     }
 
                     // Parse SSE: each chunk is a "data: {...}" line
+                    for try await line in bytes.lines {
+                        guard line.hasPrefix("data: ") else { continue }
+                        let jsonString = String(line.dropFirst(6))
+                        guard jsonString != "[DONE]",
+                              let jsonData = jsonString.data(using: .utf8),
+                              let chunk = try? JSONDecoder().decode(GeminiResponse.self, from: jsonData),
+                              let text = chunk.firstText
+                        else { continue }
+                        continuation.yield(text)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    // MARK: - Multi-turn Chat Streaming
+
+    /// Streams a multi-turn conversation with a system instruction.
+    /// `history` is ordered oldest-first as (role: "user"|"model", text: String).
+    func generateChatStreaming(
+        systemPrompt: String,
+        history: [(role: String, text: String)],
+        userMessage: String
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            guard GeminiConfig.isConfigured else {
+                continuation.finish(throwing: GeminiError.notConfigured)
+                return
+            }
+
+            Task {
+                do {
+                    var contents = history.map { turn in
+                        GeminiChatRequest.ChatContent(
+                            role: turn.role,
+                            parts: [GeminiChatRequest.TextPart(text: turn.text)]
+                        )
+                    }
+                    contents.append(GeminiChatRequest.ChatContent(
+                        role: "user",
+                        parts: [GeminiChatRequest.TextPart(text: userMessage)]
+                    ))
+
+                    let body = GeminiChatRequest(
+                        systemInstruction: GeminiChatRequest.SystemInstruction(
+                            parts: [GeminiChatRequest.TextPart(text: systemPrompt)]
+                        ),
+                        contents: contents,
+                        generationConfig: GeminiChatRequest.GenerationConfig(temperature: 0.85)
+                    )
+
+                    let url = URL(string: "\(GeminiConfig.baseURL)/models/\(GeminiConfig.model):streamGenerateContent?key=\(GeminiConfig.apiKey)&alt=sse")!
+                    var request = URLRequest(url: url)
+                    request.httpMethod = "POST"
+                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    request.httpBody = try self.encoder.encode(body)
+
+                    let (bytes, response) = try await self.session.bytes(for: request)
+                    if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                        continuation.finish(throwing: GeminiError.httpError(http.statusCode))
+                        return
+                    }
+
                     for try await line in bytes.lines {
                         guard line.hasPrefix("data: ") else { continue }
                         let jsonString = String(line.dropFirst(6))
