@@ -16,7 +16,7 @@ struct CelebrationOverlay: View {
                 // Confetti layer
                 GeometryReader { geo in
                     ForEach(pieces) { piece in
-                        ConfettiView(piece: piece, containerHeight: geo.size.height)
+                        ConfettiView(piece: piece, containerWidth: geo.size.width, containerHeight: geo.size.height)
                     }
                 }
                 .ignoresSafeArea()
@@ -111,6 +111,7 @@ private struct ConfettiPiece: Identifiable {
 
 private struct ConfettiView: View {
     let piece: ConfettiPiece
+    let containerWidth: CGFloat
     let containerHeight: CGFloat
 
     @State private var progress: CGFloat = 0   // 0 = top, 1 = past bottom
@@ -125,7 +126,7 @@ private struct ConfettiView: View {
             .rotationEffect(piece.rotation + spin)
             .opacity(opacity)
             .position(
-                x: UIScreen.main.bounds.width * piece.xPosition + piece.swayAmount * sin(swayPhase * .pi * 2),
+                x: containerWidth * piece.xPosition + piece.swayAmount * sin(swayPhase * .pi * 2),
                 y: -20 + (containerHeight + 40) * progress
             )
             .onAppear {

@@ -14,6 +14,11 @@ struct DevinePersistedState: Codable {
     /// ISO8601 day key (e.g. "2026-02-27") → array of completed action UUIDs
     var completedActionsByDay: [String: [UUID]]
     var streakCreditedDayKey: String?
+    /// Optional so old JSON files (missing this key) decode cleanly as nil → restored as .minorTweak.
+    var latestAdjustmentSeverity: PlanAdjustmentSeverity?
+    /// Non-nil while an AI check-in evaluation Task is in flight.
+    /// On cold launch, the app uses this to apply fallback scoring if the Task was killed mid-flight.
+    var pendingCheckinEvaluation: PendingCheckinEvaluation?
 
     static var `default`: DevinePersistedState {
         DevinePersistedState(
@@ -26,9 +31,20 @@ struct DevinePersistedState: Codable {
             planAdjustmentHistory: [],
             generatedPlan: nil,
             completedActionsByDay: [:],
-            streakCreditedDayKey: nil
+            streakCreditedDayKey: nil,
+            latestAdjustmentSeverity: nil,
+            pendingCheckinEvaluation: nil
         )
     }
+}
+
+// MARK: - Pending Check-in Evaluation
+
+/// Persisted across app kills so a killed mid-flight AI evaluation can be
+/// recovered via hardcoded fallback scoring on the next cold launch.
+struct PendingCheckinEvaluation: Codable {
+    let tags: [String]
+    let note: String
 }
 
 // MARK: - Store

@@ -9,6 +9,7 @@ struct AppRootView: View {
 #endif
 
     @StateObject private var model = DevineAppModel()
+    @StateObject private var chatCoordinator = ChatCoordinator()
     @State private var showSplash = true
 
     private var isSubscribed: Bool {
@@ -52,6 +53,7 @@ struct AppRootView: View {
                 } else {
                     MainTabsView(
                         model: model,
+                        chatCoordinator: chatCoordinator,
                         isSubscribed: isSubscribed,
                         onShowPaywall: {
                             paywallDismissedOnce = false

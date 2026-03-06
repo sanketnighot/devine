@@ -114,7 +114,7 @@ final class PlanGenerationService {
             }
         }
 
-        var lines: [String] = [
+        let lines: [String] = [
             "You are devine, a personal glow-up coach for girls aged 14-28.",
             "Be warm, encouraging, and use casual but empowering language. Never give medical advice.",
             "",
@@ -214,8 +214,9 @@ final class PlanGenerationService {
                 let startDate = Date.now
                 let dailyPlans: [DailyPlan] = geminiUpdate.dailyPlans.enumerated().map { index, day in
                     let date = Calendar.current.date(byAdding: .day, value: index + 1, to: startDate)!
-                    let actions = day.actions.map { item in
+                    let actions = day.actions.prefix(3).enumerated().map { aIdx, item in
                         PerfectActionCodable(
+                            id: UUID.deterministicAction(dayNumber: day.dayNumber, actionIndex: aIdx, title: item.title),
                             title: item.title,
                             instructions: item.instructions,
                             estimatedMinutes: item.estimatedMinutes
@@ -225,7 +226,7 @@ final class PlanGenerationService {
                         dayNumber: day.dayNumber,
                         date: date,
                         theme: day.theme,
-                        actions: Array(actions.prefix(3))
+                        actions: Array(actions)
                     )
                 }
                 suggestedUpdate = SuggestedPlanUpdate(
@@ -346,15 +347,17 @@ final class PlanGenerationService {
 
             return response.dailyPlans.enumerated().map { index, day in
                 let date = cal.date(byAdding: .day, value: index + 1, to: today)!
-                let actions = day.actions.prefix(3).map { item in
+                let dayNumber = startOffset + index + 1
+                let actions = day.actions.prefix(3).enumerated().map { aIdx, item in
                     PerfectActionCodable(
+                        id: UUID.deterministicAction(dayNumber: dayNumber, actionIndex: aIdx, title: item.title),
                         title: item.title,
                         instructions: item.instructions,
                         estimatedMinutes: item.estimatedMinutes
                     )
                 }
                 return DailyPlan(
-                    dayNumber: startOffset + index + 1,
+                    dayNumber: dayNumber,
                     date: date,
                     theme: day.theme,
                     actions: Array(actions)
@@ -387,7 +390,7 @@ final class PlanGenerationService {
             ? (profile.customGoalName ?? goal.displayName)
             : goal.displayName
 
-        var lines: [String] = [
+        let lines: [String] = [
             "You are devine, a personal glow-up coach for girls aged 14–28.",
             "Be warm, encouraging, and use casual but empowering language. Never give medical advice.",
             "",
@@ -473,8 +476,9 @@ final class PlanGenerationService {
 
             let dailyPlans: [DailyPlan] = response.dailyPlans.map { day in
                 let date = Calendar.current.date(byAdding: .day, value: day.dayNumber - 1, to: startDate)!
-                let actions = day.actions.map { item in
+                let actions = day.actions.prefix(3).enumerated().map { index, item in
                     PerfectActionCodable(
+                        id: UUID.deterministicAction(dayNumber: day.dayNumber, actionIndex: index, title: item.title),
                         title: item.title,
                         instructions: item.instructions,
                         estimatedMinutes: item.estimatedMinutes
@@ -484,7 +488,7 @@ final class PlanGenerationService {
                     dayNumber: day.dayNumber,
                     date: date,
                     theme: day.theme,
-                    actions: Array(actions.prefix(3))
+                    actions: Array(actions)
                 )
             }
 

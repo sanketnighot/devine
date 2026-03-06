@@ -227,11 +227,12 @@ struct MirrorTimelineView: View {
             icon: "lock.shield",
             title: "Photo access needed",
             message: "Allow Photos access to view your mirror timeline.",
-            ctaLabel: "Open Settings"
-        ) {
-            guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
-            UIApplication.shared.open(settingsURL)
-        }
+            ctaLabel: "Open Settings",
+            ctaAction: {
+                guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
+                UIApplication.shared.open(settingsURL)
+            }
+        )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -240,12 +241,13 @@ struct MirrorTimelineView: View {
             icon: "exclamationmark.triangle",
             title: "Something went wrong",
             message: message,
-            ctaLabel: "Retry"
-        ) {
-            Task {
-                await requestPermissionAndLoad()
+            ctaLabel: "Retry",
+            ctaAction: {
+                Task {
+                    await requestPermissionAndLoad()
+                }
             }
-        }
+        )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 

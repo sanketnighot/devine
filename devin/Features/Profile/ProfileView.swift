@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ProfileView: View {
     @ObservedObject var model: DevineAppModel
+    @ObservedObject var chatCoordinator: ChatCoordinator
     let isSubscribed: Bool
     let onShowPaywall: () -> Void
 
@@ -260,7 +261,7 @@ struct ProfileView: View {
             SurfaceCard(padding: DevineTheme.Spacing.xs) {
                 VStack(spacing: 0) {
                     NavigationLink {
-                        SettingsView(model: model)
+                        SettingsView(model: model, chatCoordinator: chatCoordinator)
                     } label: {
                         HStack(spacing: DevineTheme.Spacing.md) {
                             Image(systemName: "gearshape")

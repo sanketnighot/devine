@@ -15,6 +15,15 @@ final class ChatViewModel: ObservableObject {
     private let service = DevineChatService()
     private var streamingID: UUID?
 
+    let threadID: UUID
+    private let coordinator: ChatCoordinator
+
+    init(threadID: UUID, coordinator: ChatCoordinator) {
+        self.threadID = threadID
+        self.coordinator = coordinator
+        self.messages = coordinator.loadMessages(for: threadID)
+    }
+
     func initializeIfNeeded(name: String, goalLabel: String) {
         guard messages.isEmpty else { return }
         let welcome = ChatMessage(
@@ -22,13 +31,7 @@ final class ChatViewModel: ObservableObject {
             content: "hey \(name)! 👋 I'm your Devine AI glow coach. I'm here to help you with your \(goalLabel.lowercased()) journey — ask me anything about your routine, plan, score, or habits. Let's glow! ✨"
         )
         messages.append(welcome)
-    }
-
-    func handleNudge(seedMessage: String, stats: ChatStats?) async {
-        guard !isStreaming else { return }
-        messages.removeAll()
-        shareStats = true
-        await send(text: seedMessage, stats: stats)
+        coordinator.saveMessages(messages, for: threadID)
     }
 
     func send(text: String, stats: ChatStats?) async {
@@ -47,7 +50,7 @@ final class ChatViewModel: ObservableObject {
 
         do {
             let statsToUse = shareStats ? stats : nil
-            let history = Array(messages.dropLast()) // exclude the placeholder
+            let history = Array(messages.dropLast())
             for try await chunk in service.sendMessage(text: trimmed, history: history, stats: statsToUse) {
                 guard let idx = messages.firstIndex(where: { $0.id == aiID }) else { break }
                 messages[idx].content += chunk
@@ -77,12 +80,14 @@ final class ChatViewModel: ObservableObject {
             )
             if let i = messages.firstIndex(where: { $0.id == messageID }) {
                 messages[i].planProposal?.isApplied = true
+                coordinator.markProposalApplied(threadID: threadID, messageID: messageID)
             }
             let confirmMsg = ChatMessage(
                 role: .assistant,
                 content: "Done! Your plan has been updated with the new focus — your upcoming days now reflect this change. Keep building on it ✨"
             )
             messages.append(confirmMsg)
+            coordinator.saveMessages(messages, for: threadID)
             DevineHaptic.allActionsComplete.fire()
         } catch {
             errorToast = "Couldn't update plan — please try again"
@@ -103,18 +108,37 @@ final class ChatViewModel: ObservableObject {
         messages[idx].isStreaming = false
         isStreaming = false
         streamingID = nil
+
+        // Persist immediately after every finalized AI response
+        coordinator.saveMessages(messages, for: threadID)
     }
 }
 
 // MARK: - ChatView
 
 struct ChatView: View {
+    @ObservedObject var coordinator: ChatCoordinator
     @ObservedObject var model: DevineAppModel
-    @StateObject private var vm = ChatViewModel()
+    let threadID: UUID
+
+    @StateObject private var vm: ChatViewModel
     @FocusState private var inputFocused: Bool
-    @Namespace private var bottomAnchor
+    @FocusState private var titleFocused: Bool
+    @State private var isRenamingTitle = false
+    @State private var titleDraft = ""
+
+    init(threadID: UUID, coordinator: ChatCoordinator, model: DevineAppModel) {
+        self.threadID = threadID
+        self.coordinator = coordinator
+        self.model = model
+        _vm = StateObject(wrappedValue: ChatViewModel(threadID: threadID, coordinator: coordinator))
+    }
 
     private var chatStats: ChatStats { model.chatStats }
+
+    private var threadTitle: String {
+        coordinator.threads.first { $0.id == threadID }?.title ?? "Coach"
+    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -156,22 +180,11 @@ struct ChatView: View {
                 inputBar
             }
         }
+        .navigationBarHidden(true)
         .onAppear {
             let name = model.userProfile?.name ?? "there"
             let goalLabel = model.chatStats.goalLabel
-            if let nudge = model.coachNudge {
-                let stats = chatStats
-                model.dismissCoachNudge()
-                Task { await vm.handleNudge(seedMessage: nudge.seedMessage, stats: stats) }
-            } else {
-                vm.initializeIfNeeded(name: name, goalLabel: goalLabel)
-            }
-        }
-        .onChange(of: model.selectedTab) { _, newTab in
-            guard newTab == 2, let nudge = model.coachNudge else { return }
-            let stats = chatStats
-            model.dismissCoachNudge()
-            Task { await vm.handleNudge(seedMessage: nudge.seedMessage, stats: stats) }
+            vm.initializeIfNeeded(name: name, goalLabel: goalLabel)
         }
         .overlay(alignment: .top) {
             if let toast = vm.errorToast {
@@ -196,31 +209,64 @@ struct ChatView: View {
                     .foregroundStyle(DevineTheme.Colors.ctaPrimary)
             }
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text("devine AI")
+            // Thread title — tap to rename
+            if isRenamingTitle {
+                TextField("Thread title", text: $titleDraft)
                     .font(.system(size: 16, weight: .bold, design: .rounded))
                     .foregroundStyle(DevineTheme.Colors.textPrimary)
-                Text("your glow coach")
-                    .font(.system(size: 11))
-                    .foregroundStyle(DevineTheme.Colors.textMuted)
+                    .focused($titleFocused)
+                    .submitLabel(.done)
+                    .onSubmit { commitRename() }
+                    .onAppear { titleFocused = true }
+            } else {
+                Button {
+                    titleDraft = threadTitle
+                    isRenamingTitle = true
+                } label: {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(threadTitle)
+                            .font(.system(size: 16, weight: .bold, design: .rounded))
+                            .foregroundStyle(DevineTheme.Colors.textPrimary)
+                            .lineLimit(1)
+                        Text("your glow coach")
+                            .font(.system(size: 11))
+                            .foregroundStyle(DevineTheme.Colors.textMuted)
+                    }
+                }
+                .buttonStyle(.plain)
             }
 
             Spacer()
 
-            // Status indicator
-            HStack(spacing: 5) {
-                Circle()
-                    .fill(vm.isStreaming ? DevineTheme.Colors.warningAccent : DevineTheme.Colors.successAccent)
-                    .frame(width: 6, height: 6)
-                    .animation(DevineTheme.Motion.quick, value: vm.isStreaming)
-                Text(vm.isStreaming ? "thinking..." : "ready")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(DevineTheme.Colors.textMuted)
+            if isRenamingTitle {
+                Button("Done") { commitRename() }
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(DevineTheme.Colors.ctaPrimary)
+            } else {
+                // Status indicator
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(vm.isStreaming ? DevineTheme.Colors.warningAccent : DevineTheme.Colors.successAccent)
+                        .frame(width: 6, height: 6)
+                        .animation(DevineTheme.Motion.quick, value: vm.isStreaming)
+                    Text(vm.isStreaming ? "thinking..." : "ready")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(DevineTheme.Colors.textMuted)
+                }
             }
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
         .background(DevineTheme.Colors.bgPrimary)
+    }
+
+    private func commitRename() {
+        let trimmed = titleDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            coordinator.renameThread(threadID, title: trimmed)
+        }
+        isRenamingTitle = false
+        titleFocused = false
     }
 
     // MARK: Empty State
@@ -315,7 +361,6 @@ struct ChatView: View {
 
     private var inputBar: some View {
         VStack(spacing: 0) {
-            // Quick prompts strip (when not empty state + input focused)
             if !vm.messages.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -409,7 +454,6 @@ struct ChatView: View {
             .padding(.bottom, 4)
             .background(DevineTheme.Colors.bgPrimary)
 
-            // Stats context pill (shown when share stats is on)
             if vm.shareStats {
                 statsContextPill
                     .padding(.horizontal, 16)
@@ -471,7 +515,6 @@ private struct MessageRow: View {
                 }
             }
 
-            // Plan proposal card
             if let proposal = message.planProposal {
                 PlanProposalCard(proposal: proposal, isApplying: isApplyingProposal, onApply: onApplyProposal)
                     .padding(.leading, message.role == .assistant ? 44 : 0)
@@ -714,24 +757,15 @@ private struct TypingDots: View {
 private struct ChatBubbleShape: Shape {
     let isUser: Bool
     private let radius: CGFloat = DevineTheme.Radius.lg
-    private let tail: CGFloat = 6
 
     func path(in rect: CGRect) -> Path {
         var path = Path()
         let r = min(radius, rect.height / 2)
-        if isUser {
-            path.addRoundedRect(
-                in: CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height),
-                cornerSize: CGSize(width: r, height: r),
-                style: .continuous
-            )
-        } else {
-            path.addRoundedRect(
-                in: CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height),
-                cornerSize: CGSize(width: r, height: r),
-                style: .continuous
-            )
-        }
+        path.addRoundedRect(
+            in: CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height),
+            cornerSize: CGSize(width: r, height: r),
+            style: .continuous
+        )
         return path
     }
 }

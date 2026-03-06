@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MainTabsView: View {
     @ObservedObject var model: DevineAppModel
+    @ObservedObject var chatCoordinator: ChatCoordinator
     let isSubscribed: Bool
     let onShowPaywall: () -> Void
 
@@ -15,7 +16,7 @@ struct MainTabsView: View {
                 .tabItem { Label("Plan", systemImage: "list.bullet.clipboard") }
                 .tag(1)
 
-            ChatView(model: model)
+            ChatThreadListView(coordinator: chatCoordinator, model: model)
                 .tabItem { Label("Coach", systemImage: "wand.and.stars") }
                 .tag(2)
 
@@ -23,9 +24,23 @@ struct MainTabsView: View {
                 .tabItem { Label("Social", systemImage: "person.3.fill") }
                 .tag(3)
 
-            ProfileView(model: model, isSubscribed: isSubscribed, onShowPaywall: onShowPaywall)
+            ProfileView(model: model, chatCoordinator: chatCoordinator, isSubscribed: isSubscribed, onShowPaywall: onShowPaywall)
                 .tabItem { Label("Profile", systemImage: "person.crop.circle") }
                 .tag(4)
+        }
+        // CoachNudge → create a new dedicated thread and auto-navigate to it.
+        .onChange(of: model.coachNudge) { _, nudge in
+            guard let nudge else { return }
+            let name = model.userProfile?.name ?? "there"
+            let goalLabel = model.chatStats.goalLabel
+            let thread = chatCoordinator.createNudgeThread(
+                seedMessage: nudge.seedMessage,
+                name: name,
+                goalLabel: goalLabel
+            )
+            chatCoordinator.pendingNavigationThreadID = thread.id
+            model.selectedTab = 2
+            model.dismissCoachNudge()
         }
     }
 }

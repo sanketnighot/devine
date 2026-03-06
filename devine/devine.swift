@@ -37,20 +37,52 @@ struct DevineEntry: TimelineEntry {
 // MARK: - Timeline Provider
 
 struct DevineProvider: TimelineProvider {
+    /// Suite name must match the App Group registered on both the main app target
+    /// and this widget target in Xcode → Signing & Capabilities → App Groups.
+    private let suiteName = "group.com.sanket.devin"
+
     func placeholder(in context: Context) -> DevineEntry {
         DevineEntry(date: .now, data: .placeholder)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (DevineEntry) -> Void) {
-        completion(DevineEntry(date: .now, data: .placeholder))
+        completion(DevineEntry(date: .now, data: loadWidgetData()))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<DevineEntry>) -> Void) {
-        // Static mock data for now. When App Group is configured,
-        // read from UserDefaults(suiteName: "group.com.sanket.devin")
-        let entry = DevineEntry(date: .now, data: .placeholder)
+        let entry = DevineEntry(date: .now, data: loadWidgetData())
+        // Refresh every hour as a safety net; the main app calls
+        // WidgetCenter.reloadAllTimelines() on every state change so
+        // real-time updates happen without waiting for this deadline.
         let nextUpdate = Calendar.current.date(byAdding: .hour, value: 1, to: .now)!
         completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
+    }
+
+    // MARK: - Shared data reader
+
+    private func loadWidgetData() -> DevineWidgetData {
+        guard
+            let defaults = UserDefaults(suiteName: suiteName),
+            defaults.bool(forKey: "widget_has_data")
+        else {
+            // App Group not yet configured, or the app hasn't launched once yet.
+            return .empty
+        }
+
+        let rawScore = defaults.integer(forKey: "widget_glow_score")
+        let glowScore: Int? = rawScore == -1 ? nil : rawScore
+        let streakDays = defaults.integer(forKey: "widget_streak_days")
+        let todayCompleted = defaults.integer(forKey: "widget_today_completed")
+        let todayTotal = max(1, defaults.integer(forKey: "widget_today_total"))
+        let goalName = defaults.string(forKey: "widget_goal_name") ?? "Getting started"
+
+        return DevineWidgetData(
+            glowScore: glowScore,
+            streakDays: streakDays,
+            todayCompleted: todayCompleted,
+            todayTotal: todayTotal,
+            goalName: goalName
+        )
     }
 }
 
@@ -240,7 +272,7 @@ struct TodayActionsWidgetView: View {
                         .foregroundStyle(WidgetTheme.Colors.successAccent)
                 }
             } else {
-                Text("\(entry.data.todayTotal - entry.data.todayCompleted) left")
+                Text("\(max(0, entry.data.todayTotal - entry.data.todayCompleted)) left")
                     .font(.system(.caption, design: .rounded, weight: .semibold))
                     .foregroundStyle(WidgetTheme.Colors.ctaPrimary)
             }
@@ -308,7 +340,7 @@ struct TodayActionsWidgetView: View {
                     }
                 } else {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("\(entry.data.todayTotal - entry.data.todayCompleted) actions left")
+                        Text("\(max(0, entry.data.todayTotal - entry.data.todayCompleted)) actions left")
                             .font(.system(.subheadline, design: .rounded, weight: .semibold))
                             .foregroundStyle(WidgetTheme.Colors.textPrimary)
 

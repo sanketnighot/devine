@@ -1,6 +1,7 @@
 import SwiftUI
 import Combine
 import Photos
+import WidgetKit
 
 final class DevineAppModel: ObservableObject {
     // MARK: - Published State
@@ -39,6 +40,7 @@ final class DevineAppModel: ObservableObject {
     private var currentDayKey = DevineAppModel.dayKey(for: .now)
     private var streakCreditedDayKey: String?
     private var completedActionsByDay: [String: [UUID]] = [:]
+    private var pendingCheckinEvaluation: PendingCheckinEvaluation?
     private let mirrorMetadataStore = MirrorCheckinMetadataStore()
     private let stateStore = DevineStateStore()
 
@@ -72,6 +74,15 @@ final class DevineAppModel: ObservableObject {
     /// Public day key helper for views to look up completion data.
     static func dayKey(for date: Date) -> String {
         date.formatted(.iso8601.year().month().day())
+    }
+
+    /// Parses a day key produced by dayKey(for:) back into a Date (start of that day).
+    private static func parseDay(_ key: String) -> Date? {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = Calendar.current.timeZone
+        return f.date(from: key)
     }
 
     // MARK: - Init
@@ -140,6 +151,7 @@ final class DevineAppModel: ObservableObject {
         // 1. Delete persisted files
         stateStore.deleteFile()
         mirrorMetadataStore.deleteFile()
+        ChatThreadStore().deleteFile()
 
         // 2. Remove all known UserDefaults keys
         let keys = [
@@ -182,6 +194,13 @@ final class DevineAppModel: ObservableObject {
         currentDayKey = DevineAppModel.dayKey(for: .now)
         streakCreditedDayKey = nil
         completedActionsByDay = [:]
+        pendingCheckinEvaluation = nil
+
+        // 5. Clear widget data
+        if let defaults = UserDefaults(suiteName: "group.com.sanket.devin") {
+            defaults.removeObject(forKey: "widget_has_data")
+        }
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     // MARK: - Daily Rollover
@@ -191,7 +210,7 @@ final class DevineAppModel: ObservableObject {
         guard newKey != currentDayKey else { return }
 
         // Detect streak break: new day started but yesterday's actions weren't completed
-        if streakCreditedDayKey != currentDayKey && streakDays > 1 {
+        if streakCreditedDayKey != currentDayKey && streakDays > 0 {
             let brokenStreak = streakDays
             streakDays = 0
             coachNudge = CoachNudge(
@@ -228,6 +247,11 @@ final class DevineAppModel: ObservableObject {
 
     func markActionDone(_ action: PerfectAction) {
         rollOverIfNeeded()
+        // After a day rollover, todayActions is replaced with the new day's actions.
+        // The action passed in may belong to the previous day and no longer exist in
+        // todayActions.  Inserting a stale UUID would inflate completedActionIDs.count
+        // without matching any visible action, causing "4 of 3" style display bugs.
+        guard todayActions.contains(where: { $0.id == action.id }) else { return }
         completedActionIDs.insert(action.id)
         completedActionsByDay[currentDayKey] = Array(completedActionIDs)
         evaluatePlanAdjustment()
@@ -243,6 +267,19 @@ final class DevineAppModel: ObservableObject {
     // MARK: - Mirror Checkins
 
     func recordMirrorCheckin(tags: [String], note: String) {
+        // BUG 4: Save a timeline entry so onboarding check-ins appear in the mirror timeline.
+        // assetLocalIdentifier is "" (no photo) with .photosLibrary as a neutral source sentinel.
+        let entry = MirrorCheckinEntry(
+            createdAt: .now,
+            tags: tags,
+            note: note,
+            assetLocalIdentifier: "",
+            source: .photosLibrary
+        )
+        mirrorCheckins.insert(entry, at: 0)
+        mirrorCheckins.sort { $0.createdAt > $1.createdAt }
+        persistMirrorCheckins()
+        syncMirrorTimelineState()
         applyMirrorCheckinScoring(tags: tags, note: note)
     }
 
@@ -275,6 +312,11 @@ final class DevineAppModel: ObservableObject {
         let capturedTags = assetLocalIdentifier != nil ? tags + ["photo_evidence"] : tags
         let capturedNote = note
         let capturedIdentifier = assetLocalIdentifier
+
+        // BUG 6: Persist a sentinel so cold-launch recovery can apply fallback scoring
+        // if the app is killed before the AI Task completes.
+        pendingCheckinEvaluation = PendingCheckinEvaluation(tags: capturedTags, note: capturedNote)
+        persistState()
 
         Task { @MainActor in
             do {
@@ -316,6 +358,7 @@ final class DevineAppModel: ObservableObject {
                 checkinEvaluationState = .ready(evaluation)
             } catch {
                 print("[DevineAppModel] AI check-in eval failed: \(error.localizedDescription). Falling back to hardcoded scoring.")
+                pendingCheckinEvaluation = nil  // Clear flag before persistState inside applyMirrorCheckinScoring
                 applyMirrorCheckinScoring(tags: capturedTags, note: capturedNote)
                 checkinEvaluationState = .failed(error.localizedDescription)
             }
@@ -380,6 +423,7 @@ final class DevineAppModel: ObservableObject {
             feedback: evaluation.feedback
         )
 
+        pendingCheckinEvaluation = nil
         checkinEvaluationState = .idle
         persistState()
     }
@@ -414,6 +458,7 @@ final class DevineAppModel: ObservableObject {
             feedback: evaluation.feedback
         )
 
+        pendingCheckinEvaluation = nil
         checkinEvaluationState = .idle
         persistState()
     }
@@ -712,19 +757,62 @@ final class DevineAppModel: ObservableObject {
     // MARK: - Persistence
 
     private func persistState() {
+        // BUG 5: Prune unbounded collections before persisting to prevent ever-growing JSON
+        let prunedEvidence = Array(evidenceLedger.prefix(100))
+        let keepKeys: Set<String> = Set((0..<30).compactMap {
+            Calendar.current.date(byAdding: .day, value: -$0, to: .now).map { DevineAppModel.dayKey(for: $0) }
+        })
+        let prunedActionsByDay = completedActionsByDay.filter { keepKeys.contains($0.key) }
+
         let snapshot = DevinePersistedState(
             userProfile: userProfile,
             primaryGoalRawValue: primaryGoal.rawValue,
             streakDays: streakDays,
             glowScore: glowScore,
             confidence: confidence,
-            evidenceLedger: evidenceLedger,
+            evidenceLedger: prunedEvidence,
             planAdjustmentHistory: planAdjustmentHistory,
             generatedPlan: generatedPlan,
-            completedActionsByDay: completedActionsByDay,
-            streakCreditedDayKey: streakCreditedDayKey
+            completedActionsByDay: prunedActionsByDay,
+            streakCreditedDayKey: streakCreditedDayKey,
+            latestAdjustmentSeverity: latestAdjustmentSeverity,
+            pendingCheckinEvaluation: pendingCheckinEvaluation
         )
         try? stateStore.save(snapshot)
+        writeWidgetData()
+    }
+
+    // MARK: - Widget Data Sync
+
+    /// Writes the current state into the shared App Group UserDefaults so the
+    /// widget extension can display live data.  WidgetCenter reloads all
+    /// timelines so the change is reflected immediately on the home screen.
+    ///
+    /// NOTE: Requires the App Group capability ("group.com.sanket.devin") to be
+    /// enabled on BOTH the main app target and the devine widget target in
+    /// Xcode → Signing & Capabilities.  If the suite is not registered the
+    /// UserDefaults init returns nil and this call is a no-op.
+    private func writeWidgetData() {
+        guard let defaults = UserDefaults(suiteName: "group.com.sanket.devin") else { return }
+
+        let goalName: String
+        if primaryGoal == .custom, let name = userProfile?.customGoalName, !name.isEmpty {
+            goalName = name
+        } else {
+            goalName = primaryGoal.displayName
+        }
+
+        defaults.set(true, forKey: "widget_has_data")
+        // Store -1 as sentinel for "no score yet" because UserDefaults.integer(forKey:) returns 0 by default
+        defaults.set(glowScore ?? -1, forKey: "widget_glow_score")
+        defaults.set(streakDays, forKey: "widget_streak_days")
+        // Clamp completed to total — guards against the rollover race described in markActionDone
+        let safeCompleted = min(completedActionIDs.count, todayActions.count)
+        defaults.set(safeCompleted, forKey: "widget_today_completed")
+        defaults.set(todayActions.count, forKey: "widget_today_total")
+        defaults.set(goalName, forKey: "widget_goal_name")
+
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     private func loadPersistedState() {
@@ -740,6 +828,37 @@ final class DevineAppModel: ObservableObject {
         planAdjustmentHistory = state.planAdjustmentHistory
         completedActionsByDay = state.completedActionsByDay
         streakCreditedDayKey = state.streakCreditedDayKey
+        latestAdjustmentSeverity = state.latestAdjustmentSeverity ?? .minorTweak
+
+        // Detect streak break on cold launch.
+        // rollOverIfNeeded() cannot catch this because currentDayKey is already
+        // set to today at init time, so its guard returns immediately.
+        // A streak is still valid only if the user credited it today or yesterday.
+        if let creditedKey = streakCreditedDayKey,
+           let creditedDate = Self.parseDay(creditedKey) {
+            let cal = Calendar.current
+            let todayStart = cal.startOfDay(for: .now)
+            let creditedStart = cal.startOfDay(for: creditedDate)
+            let daysSinceCredited = cal.dateComponents([.day], from: creditedStart, to: todayStart).day ?? 0
+            if daysSinceCredited > 1 {
+                // Gap of 2+ days — streak is broken
+                let brokenStreak = streakDays
+                streakDays = 0
+                streakCreditedDayKey = nil
+                if brokenStreak > 0 {
+                    coachNudge = CoachNudge(
+                        type: .streakBroken,
+                        headline: "Your \(brokenStreak)-day streak ended",
+                        subtitle: "Let's figure out what got in the way and restart",
+                        seedMessage: "I just lost my \(brokenStreak)-day glow streak. I want to understand what got in the way and build a realistic restart plan. What usually causes streaks to break, and what's the fastest way to rebuild momentum?"
+                    )
+                }
+            }
+        } else if streakCreditedDayKey == nil, streakDays > 0 {
+            // Positive streak with no credited key is an impossible valid state —
+            // silently zero to prevent phantom streaks from lingering.
+            streakDays = 0
+        }
 
         // Restore AI subscores from plan
         if let plan = generatedPlan {
@@ -755,5 +874,17 @@ final class DevineAppModel: ObservableObject {
         if glowScore != nil {
             goalTrajectory = trajectory(for: glowScore!, confidence: confidence)
         }
+
+        // BUG 6: Cold-launch recovery — if the app was killed mid-flight during an AI evaluation,
+        // apply fallback hardcoded scoring so the user's check-in is not silently lost.
+        if let pending = state.pendingCheckinEvaluation {
+            // pendingCheckinEvaluation is still nil on self (not yet set), so persistState()
+            // inside applyMirrorCheckinScoring will save nil for the flag, clearing it automatically.
+            applyMirrorCheckinScoring(tags: pending.tags, note: pending.note)
+        }
+
+        // Push current state to the shared App Group container so widgets
+        // immediately reflect real data after every cold launch.
+        writeWidgetData()
     }
 }
