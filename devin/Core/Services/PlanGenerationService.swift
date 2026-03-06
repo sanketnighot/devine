@@ -114,7 +114,7 @@ final class PlanGenerationService {
             }
         }
 
-        let lines: [String] = [
+        var lines: [String] = [
             "You are devine, a personal glow-up coach for girls aged 14-28.",
             "Be warm, encouraging, and use casual but empowering language. Never give medical advice.",
             "",
@@ -390,7 +390,7 @@ final class PlanGenerationService {
             ? (profile.customGoalName ?? goal.displayName)
             : goal.displayName
 
-        let lines: [String] = [
+        var lines: [String] = [
             "You are devine, a personal glow-up coach for girls aged 14–28.",
             "Be warm, encouraging, and use casual but empowering language. Never give medical advice.",
             "",
